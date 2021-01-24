@@ -22,7 +22,7 @@ class Vocab(object):
         self.delimiter = delimiter
         self.vocab_file = vocab_file
 
-    def tokenize(self, line, add_eos=False, add_double_eos=False):
+    def tokenize(self, line, add_bos_and_eos=False, add_eos=False, add_double_eos=False):
         line = line.strip()
         # convert to lower case
         if self.lower_case:
@@ -37,6 +37,8 @@ class Vocab(object):
         if add_double_eos:  # lm1b
             return ["<S>"] + symbols + ["<S>"]
         elif add_eos:
+            return symbols + ["<EOS>"]
+        elif add_bos_and_eos:
             return ["<BOS>"] + list(symbols) + ["<EOS>"]
         else:
             return symbols
@@ -49,8 +51,6 @@ class Vocab(object):
         sents = []
         with open(path, "r", encoding="utf-8") as f:
             for idx, line in enumerate(f):
-                if idx == 500000 * 3:
-                    break
                 if verbose and idx > 0 and idx % 500000 == 0:
                     print("    line {}".format(idx))
                 symbols = self.tokenize(line, add_eos=add_eos)
@@ -126,8 +126,6 @@ class Vocab(object):
         encoded = []
         with open(path, "r", encoding="utf-8") as f:
             for idx, line in enumerate(f):
-                if idx == 500000 * 3:
-                    break
                 if verbose and idx > 0 and idx % 500000 == 0:
                     print("    line {}".format(idx))
                 symbols = self.tokenize(

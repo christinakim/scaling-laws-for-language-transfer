@@ -215,7 +215,10 @@ if not args.wandb:
     args.debug = True
 
 if args.wandb:
-    wandb.init(project="regular language")
+    if 'states' in args.dataset:
+        wandb.init(project="regular language")
+    elif args.dataset == 'simple_wiki':
+        wandb.init(project="simple wikipedia")
 
 if args.model_size:
     print('model config of size {}'.format(args.model_size))
@@ -265,8 +268,9 @@ device = torch.device("cuda" if args.cuda else "cpu")
 corpus = get_lm_corpus(args.data, args.dataset)
 ntokens = len(corpus.vocab)
 args.n_tokens = ntokens
-args.regex = corpus.regex
-regex_compiled = re.compile(str(args.regex))
+if 'states' in args.dataset:
+    args.regex = corpus.regex
+    regex_compiled = re.compile(str(args.regex))
 
 eval_batch_size = 2
 tr_iter = corpus.get_iterator("train", args.batch_size, args.n_ctx, device=device,)
@@ -550,7 +554,7 @@ def train():
 
 
             eval_start_time = time.time()
-        if args.sample and train_step % args.sample_interval == 0:
+        if 'states' in args.dataset and args.sample and train_step % args.sample_interval == 0:
             # sample here
             words = sample_words(model, 100, corpus.vocab.sym2idx, corpus.vocab.idx2sym,  device=device, temperature=1.0, sample=True, top_k=10)
             good_samples = list(filter(regex_compiled.match, words))

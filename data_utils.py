@@ -188,11 +188,7 @@ class Corpus(object):
         self.dataset = dataset
         self.vocab = Vocab(*args, **kwargs)
 
-        info_file = os.path.join(path, 'info.txt')
-        with open(info_file) as f:
-            first_line = f.readline().strip()
-            self.regex = first_line.replace("regex=", "")
-        f.close()
+
 
         if self.dataset in ["ptb", "wt2", "enwik8", "text8"]:
             self.vocab.count_file(os.path.join(path, "train.txt"))
@@ -210,6 +206,12 @@ class Corpus(object):
             train_paths = glob.glob(train_path_pattern)
             # the vocab will load from file when build_vocab() is called
         elif "states" in self.dataset:
+            info_file = os.path.join(path, 'info.txt')
+            with open(info_file) as f:
+                first_line = f.readline().strip()
+                self.regex = first_line.replace("regex=", "")
+            f.close()
+
             self.vocab.count_file(os.path.join(path, "0_shard_shuff.txt"))
             self.vocab.count_file(os.path.join(path, "1_shard_shuff.txt"))
             self.vocab.count_file(os.path.join(path, "2_shard_shuff.txt"))
@@ -226,7 +228,7 @@ class Corpus(object):
             self.test = self.vocab.encode_file(
                 os.path.join(path, "test.txt"), ordered=True
             )
-        elif self.dataset in ["enwik8", "text8"]:
+        elif self.dataset in ["enwik8", "text8", "simple_wiki"]:
             self.train = self.vocab.encode_file(
                 os.path.join(path, "train.txt"), ordered=True, add_eos=False
             )
@@ -246,13 +248,13 @@ class Corpus(object):
             )
         elif "states" in self.dataset:
             self.train = self.vocab.encode_file(
-                os.path.join(path, "0_shard_shuff.txt"), ordered=True, add_eos=True
+                os.path.join(path, "0_shard_shuff.txt"), ordered=True, add_bos_and_eos=True
             )
             self.valid = self.vocab.encode_file(
-                os.path.join(path, "1_shard_shuff.txt"), ordered=True, add_eos=True
+                os.path.join(path, "1_shard_shuff.txt"), ordered=True, add_bos_and_eos=True
             )
             self.test = self.vocab.encode_file(
-                os.path.join(path, "2_shard_shuff.txt"), ordered=True, add_eos=True
+                os.path.join(path, "2_shard_shuff.txt"), ordered=True, add_bos_and_eos=True
             )
 
     def get_iterator(self, split, *args, **kwargs):
@@ -304,6 +306,9 @@ def get_lm_corpus(datadir, dataset):
             kwargs["vocab_file"] = os.path.join(datadir, "1b_word_vocab.txt")
         elif dataset in ["enwik8", "text8"]:
             pass
+        elif dataset == 'simple_wiki':
+            kwargs["special"] = ["<eos>", "<bos>"]
+            kwargs["delimiter"] = "\n"
         else:
             kwargs["special"] = ["<eos>", "<bos>"]
             kwargs["delimiter"] = ""
