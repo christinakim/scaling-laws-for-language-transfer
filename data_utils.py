@@ -190,11 +190,11 @@ class Corpus(object):
 
 
 
-        if self.dataset in ["ptb", "wt2", "enwik8", "text8"]:
+        if self.dataset in ["ptb", "wikitext-2", "enwik8", "text8"]:
             self.vocab.count_file(os.path.join(path, "train.txt"))
             self.vocab.count_file(os.path.join(path, "valid.txt"))
             self.vocab.count_file(os.path.join(path, "test.txt"))
-        elif self.dataset == "wt103":
+        elif self.dataset == "wikitext-103":
             self.vocab.count_file(os.path.join(path, "train.txt"))
         elif self.dataset == "lm1b":
             train_path_pattern = os.path.join(
@@ -218,7 +218,7 @@ class Corpus(object):
 
         self.vocab.build_vocab()
 
-        if self.dataset in ["ptb", "wt2", "wt103"]:
+        if self.dataset in ["ptb", "wikitext-2", "wikitext-103"]:
             self.train = self.vocab.encode_file(
                 os.path.join(path, "train.txt"), ordered=True
             )
@@ -261,8 +261,8 @@ class Corpus(object):
         if split == "train":
             if self.dataset in [
                 "ptb",
-                "wt2",
-                "wt103",
+                "wikitext-2",
+                "wikitext-103",
                 "enwik8",
                 "text8",
             ]:
@@ -276,7 +276,7 @@ class Corpus(object):
         elif split in ["valid", "test"]:
             data = self.valid if split == "valid" else self.test
             if (
-                self.dataset in ["ptb", "wt2", "wt103", "enwik8", "text8",]
+                self.dataset in ["ptb", "wikitext-2", "wikitext-103", "enwik8", "text8",]
                 or "states" in self.dataset
             ):
                 data_iter = LMOrderedIterator(data, *args, **kwargs)
@@ -294,7 +294,7 @@ def get_lm_corpus(datadir, dataset):
     else:
         print("Producing dataset {}...".format(dataset))
         kwargs = {}
-        if dataset in ["wt103", "wt2"]:
+        if dataset in ["wikitext-103", "wikitext-2"]:
             kwargs["special"] = ["<eos>"]
             kwargs["lower_case"] = False
         elif dataset == "ptb":
@@ -334,7 +334,7 @@ if __name__ == "__main__":
         "--dataset",
         type=str,
         default="text8",
-        choices=["ptb", "wt2", "wt103", "lm1b", "enwik8", "text8"],
+        choices=["ptb", "wikitext-2", "wikitext-103", "lm1b", "enwik8", "text8"],
         help="dataset name",
     )
     args = parser.parse_args()

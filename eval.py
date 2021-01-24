@@ -20,8 +20,8 @@ parser.add_argument(
 parser.add_argument(
     "--dataset",
     type=str,
-    default="wt103",
-    choices=["wt103", "lm1b", "enwik8", "text8"],
+    default="wikitext-103",
+    choices=["wikitext-103", "lm1b", "enwik8", "text8"],
     help="dataset name",
 )
 parser.add_argument(

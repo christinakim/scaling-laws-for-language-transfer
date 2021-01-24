@@ -34,7 +34,7 @@ parser.add_argument(
     default="../data/wikitext-103",
     help="location of the data corpus",
 )
-parser.add_argument("--dataset", type=str, default="wt103", help="dataset name")
+parser.add_argument("--dataset", type=str, default="wikitext-103", help="dataset name")
 parser.add_argument(
     "--model_size",
     type=str,
@@ -145,7 +145,7 @@ parser.add_argument("--varlen", action="store_true", help="use variable length")
 parser.add_argument("--multi_gpu", action="store_true", help="use multiple GPU")
 parser.add_argument("--log-interval", type=int, default=10, help="report interval")
 parser.add_argument(
-    "--eval-interval", type=int, default=1000, help="evaluation interval"
+    "--eval_interval", type=int, default=1000, help="evaluation interval"
 )
 parser.add_argument(
     "--work_dir", default="experiments", type=str, help="experiment directory."
@@ -217,8 +217,8 @@ if not args.wandb:
 if args.wandb:
     if 'states' in args.dataset:
         wandb.init(project="regular language")
-    elif args.dataset == 'simple_wiki':
-        wandb.init(project="simple wikipedia")
+    else:
+        wandb.init(project=args.dataset)
 
 if args.model_size:
     print('model config of size {}'.format(args.model_size))
@@ -280,8 +280,8 @@ te_iter = corpus.get_iterator("test", eval_batch_size, args.n_ctx, device=device
 # adaptive softmax / embedding
 cutoffs, tie_projs = [], [False]
 if args.adaptive:
-    assert args.dataset in ["wt103", "lm1b"]
-    if args.dataset == "wt103":
+    assert args.dataset in ["wikitext-103", "lm1b"]
+    if args.dataset == "wikitext-103":
         cutoffs = [20000, 40000, 200000]
         tie_projs += [True] * len(cutoffs)
     elif args.dataset == "lm1b":

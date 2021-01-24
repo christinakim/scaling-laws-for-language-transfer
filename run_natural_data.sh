@@ -2,11 +2,10 @@
 
 if [[ $1 == 'train' ]]; then
     echo 'Run training...'
-    echo $2
     python train.py \
         --cuda \
-        --data /datadrive/pennchar/ \
-        --dataset pennchar \
+        --data /datadrive/$2/ \
+        --dataset $2 \
         --model_size $3 \
         --n_positions 500 \
         --n_ctx 128 \
@@ -22,6 +21,7 @@ if [[ $1 == 'train' ]]; then
         --max_step 400000 \
         --batch_size 4 \
         --gpu0_bsz 1 \
+        --eval_interval 4000\
         --max_epoch 1
 elif [[ $1 == 'eval' ]]; then
     echo 'Run evaluation...'
