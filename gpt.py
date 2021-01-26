@@ -51,30 +51,30 @@ common_models_by_name = {
         size="x6small", n_layer=2, d_model=64, learning_rate=0.00211,
     ),
     "x5small": ModelSettings(
-        size="x5small", n_layer=2, d_model=128, learning_rate=0.00202,
+        size="x5small", n_layer=2, d_model=128, learning_rate=0.00025,
     ),
     "x4small": ModelSettings(
-        size="x4small", n_layer=4, d_model=256, learning_rate=0.002,
+        size="x4small", n_layer=4, d_model=256, learning_rate=0.00025,
     ),
     "x3small": ModelSettings(
-        size="x3small", n_layer=4, d_model=512, learning_rate=0.00163,
+        size="x3small", n_layer=4, d_model=512, learning_rate=0.000163,
     ),
     "x2small": ModelSettings(
-        size="x2small", n_layer=8, d_model=512, learning_rate=0.00144,
+        size="x2small", n_layer=8, d_model=512, learning_rate=0.000144,
     ),
     "x1small": ModelSettings(
-        size="x1small", n_layer=6, d_model=768, learning_rate=0.00146,
+        size="x1small", n_layer=6, d_model=768, learning_rate=0.000146,
     ),
     "small": ModelSettings(
-        size="small", n_layer=12, d_model=768, learning_rate=0.0006,
+        size="small", n_layer=12, d_model=768, learning_rate=0.0000125,
     ),
     "medium": ModelSettings(
-        size="medium", n_layer=24, d_model=1024, learning_rate=0.0003,
+        size="medium", n_layer=24, d_model=1024, learning_rate=0.00000625,
     ),
     "large": ModelSettings(
-        size="large", n_layer=24, d_model=1536, learning_rate=0.00025,
+        size="large", n_layer=24, d_model=1536, learning_rate=0.00000625,
     ),
-    "xl": ModelSettings(size="xl", n_layer=24, d_model=2048, learning_rate=0.0002,),
+    "xl": ModelSettings(size="xl", n_layer=24, d_model=2048, learning_rate=0.00000625,),
 }
 
 

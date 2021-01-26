@@ -16,7 +16,7 @@ if [[ $1 == 'train' ]]; then
         --dropout 0.1 \
         --dropatt 0.0 \
         --optim adam \
-        --lr 0.00025 \
+        --lr 0.0000025 \
         --warmup_step 0 \
         --max_step 400000 \
         --batch_size 4 \
