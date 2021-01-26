@@ -220,16 +220,9 @@ model = GPT(configuration)
 args.n_all_param = sum([p.nelement() for p in model.parameters()])
 args.n_nonemb_param = sum([p.nelement() for p in model.parameters() if p.requires_grad])
 
+model = model.to(device)
 if args.multi_gpu:
-    model = model.to(device)
-    if args.gpu0_bsz >= 0:
-        para_model = BalancedDataParallel(
-            args.gpu0_bsz // args.batch_chunk, model, dim=1
-        ).to(device)
-    else:
-        para_model = nn.DataParallel(model, dim=1).to(device)
-else:
-    para_model = model.to(device)
+    model = nn.DataParallel(model).to(device)
 
 if args.optim.lower() == "adam":
     if args.sample_softmax > 0:
@@ -326,7 +319,7 @@ def train():
     model.train()
 
     for batch, (data, target, seq_len) in enumerate(train_iter):
-        logits, loss = para_model(data, target)
+        logits, loss = model(data, target)
         model.zero_grad()
 
         loss.backward()
@@ -423,6 +416,7 @@ def train():
                 if not args.debug:
                     logging("saving new model")
                     with open(os.path.join(args.work_dir, "model.pt"), "wb") as f:
+
                         torch.save(model, f)
                     with open(os.path.join(args.work_dir, "optimizer.pt"), "wb") as f:
                         torch.save(optimizer.state_dict(), f)
@@ -490,8 +484,8 @@ except KeyboardInterrupt:
 
 # Load the best saved model.
 with open(os.path.join(args.work_dir, "model.pt"), "rb") as f:
-    model = torch.load(f)
-para_model = model.to(device)
+    loaded_model = torch.load(f)
+model = loaded_model.to(device)
 
 # Run on test data.
 test_loss, test_tokens = evaluate(test_iter)
@@ -515,5 +509,5 @@ if early_stop and args.wandb:
     wandb.run.summary['early_stop'] = train_step
 else:
     wandb.run.summary['early_stop'] = -1
- 
+
 logging("=" * 100)
