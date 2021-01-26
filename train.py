@@ -144,6 +144,9 @@ parser.add_argument(
 parser.add_argument(
     "--sample-interval", type=int, default=1000, help="sample interval",
 )
+parser.add_argument(
+    "--entity", type=str, default="openai-scholars"
+)
 
 args = parser.parse_args()
 
@@ -153,9 +156,9 @@ if not args.wandb:
 
 if args.wandb:
     if 'states' in args.dataset:
-        wandb.init(project="regular-language-scaling-laws", entity="openai-scholars")
+        wandb.init(project="regular-language-scaling-laws", entity=args.entity)
     else:
-        wandb.init(project=args.dataset)
+        wandb.init(project=args.dataset, entity=args.entity)
 
 
 if args.model_size:
@@ -218,9 +221,6 @@ model = GPT(configuration)
 
 args.n_all_param = sum([p.nelement() for p in model.parameters()])
 args.n_nonemb_param = sum([p.nelement() for p in model.parameters() if p.requires_grad])
-
-if args.fp16:
-    model = model.half()
 
 if args.multi_gpu:
     model = model.to(device)
@@ -332,16 +332,11 @@ def train():
         logits, loss = para_model(data, target)
         model.zero_grad()
 
-        if args.fp16:
-            optimizer.backward(loss)
-        else:
-            loss.backward()
+
+        loss.backward()
         train_loss += loss.float().item()
 
-        if args.fp16:
-            optimizer.clip_master_grads(args.clip)
-        else:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
 
         optimizer.step()
         if args.sample_softmax > 0:

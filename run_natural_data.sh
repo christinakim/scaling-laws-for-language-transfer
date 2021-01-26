@@ -22,6 +22,7 @@ if [[ $1 == 'train' ]]; then
         --batch_size 4 \
         --gpu0_bsz 1 \
         --eval_interval 4000\
+        --entity christina \
         --max_epoch 1
 elif [[ $1 == 'eval' ]]; then
     echo 'Run evaluation...'
