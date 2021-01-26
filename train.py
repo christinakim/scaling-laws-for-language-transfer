@@ -216,9 +216,10 @@ if not args.wandb:
 
 if args.wandb:
     if 'states' in args.dataset:
-        wandb.init(project="regular language")
+        wandb.init(project="regular-language-scaling-laws", entity="openai-scholars")
     else:
         wandb.init(project=args.dataset)
+
 
 if args.model_size:
     print('model config of size {}'.format(args.model_size))
