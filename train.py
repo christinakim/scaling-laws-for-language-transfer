@@ -143,12 +143,6 @@ if not args.wandb:
     # if we aren't logging then we don't need to save
     args.debug = True
 
-if args.wandb:
-    if "states" in args.dataset:
-        wandb.init(project="regular-language-scaling-laws", entity=args.entity)
-    else:
-        wandb.init(project="{}-scaling-laws".format(args.dataset), entity=args.entity)
-
 if args.model_size:
     print("model config of size {}".format(args.model_size))
     config = common_models_by_name.get(args.model_size)
