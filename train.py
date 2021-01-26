@@ -65,18 +65,6 @@ parser.add_argument("--dropout", type=float, default=0.0, help="global dropout r
 parser.add_argument(
     "--dropatt", type=float, default=0.0, help="attention probability dropout rate"
 )
-# parser.add_argument('--init', default='normal', type=str,
-#                     help='parameter initializer to use.')
-# parser.add_argument('--emb_init', default='normal', type=str,
-#                     help='parameter initializer to use.')
-# parser.add_argument('--init_range', type=float, default=0.1,
-#                     help='parameters initialized by U(-init_range, init_range)')
-# parser.add_argument('--emb_init_range', type=float, default=0.01,
-#                     help='parameters initialized by U(-init_range, init_range)')
-# parser.add_argument('--init_std', type=float, default=0.02,
-#                     help='parameters initialized by N(0, init_std)')
-# parser.add_argument('--proj_init_std', type=float, default=0.01,
-#                     help='parameters initialized by N(0, init_std)')
 parser.add_argument(
     "--optim",
     default="adam",
@@ -88,23 +76,16 @@ parser.add_argument(
     "--lr",
     type=float,
     default=0.00025,
-    help="initial learning rate (0.00025|5 for adam|sgd)",
+    help="initial learning rate",
 )
-parser.add_argument("--mom", type=float, default=0.0, help="momentum for sgd")
 parser.add_argument(
     "--scheduler",
     default="cosine",
     type=str,
-    choices=["cosine", "inv_sqrt", "dev_perf", "constant"],
+    choices=["cosine", "inv_sqrt", "constant"],
     help="lr scheduler to use.",
 )
 parser.add_argument("--warmup_step", type=int, default=3000, help="upper epoch limit")
-parser.add_argument(
-    "--decay_rate",
-    type=float,
-    default=0.5,
-    help="decay factor when ReduceLROnPlateau is used",
-)
 parser.add_argument(
     "--lr_min", type=float, default=0.0, help="minimum learning rate during annealing"
 )
@@ -120,27 +101,10 @@ parser.add_argument("--batch_size", type=int, default=60, help="batch size")
 parser.add_argument(
     "--batch_chunk", type=int, default=1, help="split batch into chunks to save memory"
 )
-
-
-parser.add_argument(
-    "--not_tied",
-    action="store_true",
-    help="do not tie the word embedding and softmax weights",
-)
 parser.add_argument("--seed", type=int, default=1111, help="random seed")
 parser.add_argument("--cuda", action="store_true", help="use CUDA")
 parser.add_argument("--adaptive", action="store_true", help="use adaptive softmax")
-parser.add_argument(
-    "--div_val",
-    type=int,
-    default=1,
-    help="divident value for adapative input and softmax",
-)
-parser.add_argument(
-    "--pre_lnorm",
-    action="store_true",
-    help="apply LayerNorm to the input instead of the output",
-)
+
 parser.add_argument("--varlen", action="store_true", help="use variable length")
 parser.add_argument("--multi_gpu", action="store_true", help="use multiple GPU")
 parser.add_argument("--log-interval", type=int, default=10, help="report interval")
@@ -161,12 +125,6 @@ parser.add_argument(
     "--same_length", action="store_true", help="use the same attn length for all tokens"
 )
 parser.add_argument(
-    "--clamp_len",
-    type=int,
-    default=-1,
-    help="use the same pos embeddings after clamp_len",
-)
-parser.add_argument(
     "--eta_min", type=float, default=0.0, help="min learning rate for cosine scheduler"
 )
 parser.add_argument("--gpu0_bsz", type=int, default=-1, help="batch size on gpu 0")
@@ -176,27 +134,6 @@ parser.add_argument(
     type=int,
     default=-1,
     help="number of samples in sampled softmax",
-)
-parser.add_argument("--patience", type=int, default=0, help="patience")
-parser.add_argument("--finetune_v2", action="store_true", help="finetune v2")
-parser.add_argument("--finetune_v3", action="store_true", help="finetune v3")
-parser.add_argument(
-    "--fp16",
-    action="store_true",
-    help="Run in pseudo-fp16 mode (fp16 storage fp32 math).",
-)
-parser.add_argument(
-    "--static-loss-scale",
-    type=float,
-    default=1,
-    help="Static loss scale, positive power of 2 values can "
-    "improve fp16 convergence.",
-)
-parser.add_argument(
-    "--dynamic-loss-scale",
-    action="store_true",
-    help="Use dynamic loss scaling.  If supplied, this argument"
-    " supersedes --static-loss-scale.",
 )
 parser.add_argument(
     "--wandb", action="store_false", help="Log to wandb if absent",
@@ -249,18 +186,6 @@ if torch.cuda.is_available():
     else:
         torch.cuda.manual_seed_all(args.seed)
 
-# Validate `--fp16` option
-if args.fp16:
-    if not args.cuda:
-        print("WARNING: --fp16 requires --cuda, ignoring --fp16 option")
-        args.fp16 = False
-    else:
-        try:
-            from apex.fp16_utils import FP16_Optimizer
-        except:
-            print("WARNING: apex not installed, ignoring --fp16 option")
-            args.fp16 = False
-
 device = torch.device("cuda" if args.cuda else "cpu")
 
 ###############################################################################
@@ -273,21 +198,10 @@ if 'states' in args.dataset:
     args.regex = corpus.regex
     regex_compiled = re.compile(str(args.regex))
 
-eval_batch_size = 2
-tr_iter = corpus.get_iterator("train", args.batch_size, args.n_ctx, device=device,)
-va_iter = corpus.get_iterator("valid", eval_batch_size, args.n_ctx, device=device,)
-te_iter = corpus.get_iterator("test", eval_batch_size, args.n_ctx, device=device,)
-
-# adaptive softmax / embedding
-cutoffs, tie_projs = [], [False]
-if args.adaptive:
-    assert args.dataset in ["wikitext-103", "lm1b"]
-    if args.dataset == "wikitext-103":
-        cutoffs = [20000, 40000, 200000]
-        tie_projs += [True] * len(cutoffs)
-    elif args.dataset == "lm1b":
-        cutoffs = [60000, 100000, 640000]
-        tie_projs += [False] * len(cutoffs)
+eval_batch_size = 5
+train_iter = corpus.get_iterator("train", args.batch_size, args.n_ctx, device=device,)
+val_iter = corpus.get_iterator("valid", eval_batch_size, args.n_ctx, device=device,)
+test_iter = corpus.get_iterator("test", eval_batch_size, args.n_ctx, device=device,)
 
 ###############################################################################
 # Build the model
@@ -319,20 +233,7 @@ if args.multi_gpu:
 else:
     para_model = model.to(device)
 
-#### optimizer
-if args.optim.lower() == "sgd":
-    if args.sample_softmax > 0:
-        dense_params, sparse_params = [], []
-        for param in model.parameters():
-            if param.size() == model.word_emb.weight.size():
-                sparse_params.append(param)
-            else:
-                dense_params.append(param)
-        optimizer_sparse = optim.SGD(sparse_params, lr=args.lr * 2)
-        optimizer = optim.SGD(dense_params, lr=args.lr, momentum=args.mom)
-    else:
-        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.mom)
-elif args.optim.lower() == "adam":
+if args.optim.lower() == "adam":
     if args.sample_softmax > 0:
         dense_params, sparse_params = [], []
         for param in model.parameters():
@@ -344,8 +245,8 @@ elif args.optim.lower() == "adam":
         optimizer = optim.Adam(dense_params, lr=args.lr)
     else:
         optimizer = optim.Adam(model.parameters(), lr=args.lr)
-elif args.optim.lower() == "adagrad":
-    optimizer = optim.Adagrad(model.parameters(), lr=args.lr)
+else:
+    raise NotImplementedError
 
 #### scheduler
 if args.scheduler == "cosine":
@@ -373,29 +274,8 @@ elif args.scheduler == "inv_sqrt":
             )
 
     scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
-elif args.scheduler == "dev_perf":
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, factor=args.decay_rate, patience=args.patience, min_lr=args.lr_min
-    )
-    if args.sample_softmax > 0:
-        scheduler_sparse = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer_sparse,
-            factor=args.decay_rate,
-            patience=args.patience,
-            min_lr=args.lr_min,
-        )
 elif args.scheduler == "constant":
     pass
-
-if args.cuda and args.fp16:
-    # If args.dynamic_loss_scale is False, static_loss_scale will be used.
-    # If args.dynamic_loss_scale is True, it will take precedence over static_loss_scale.
-    optimizer = FP16_Optimizer(
-        optimizer,
-        static_loss_scale=args.static_loss_scale,
-        dynamic_loss_scale=args.dynamic_loss_scale,
-        dynamic_loss_args={"init_scale": 2 ** 16},
-    )
 
 if args.restart:
     if os.path.exists(os.path.join(args.restart_dir, "optimizer.pt")):
@@ -448,7 +328,6 @@ def train():
     global train_step, train_loss, best_val_loss, eval_start_time, log_start_time
     model.train()
 
-    train_iter = tr_iter.get_varlen_iter() if args.varlen else tr_iter
     for batch, (data, target, seq_len) in enumerate(train_iter):
         logits, loss = para_model(data, target)
         model.zero_grad()
@@ -470,7 +349,7 @@ def train():
 
         # step-wise learning rate annealing
         train_step += 1
-        if args.scheduler in ["cosine", "constant", "dev_perf"]:
+        if args.scheduler in ["cosine", "constant",]:
             # linear warmup stage
             if train_step < args.warmup_step:
                 curr_lr = args.lr * train_step / args.warmup_step
@@ -517,7 +396,7 @@ def train():
             log_start_time = time.time()
 
         if train_step % args.eval_interval == 0:
-            val_loss, total_tokens = evaluate(va_iter)
+            val_loss, total_tokens = evaluate(val_iter)
             logging("-" * 100)
             log_str = (
                 "| Eval {:3d} at step {:>8d} | time: {:5.2f}s "
@@ -598,7 +477,7 @@ with open(os.path.join(args.work_dir, "model.pt"), "rb") as f:
 para_model = model.to(device)
 
 # Run on test data.
-test_loss, test_tokens = evaluate(te_iter)
+test_loss, test_tokens = evaluate(test_iter)
 logging("=" * 100)
 logging(
     "| End of training | test loss {:5.2f} | test bpc {:9.5f}| test ppl {:9.3f}".format(
