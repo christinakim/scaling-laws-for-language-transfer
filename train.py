@@ -174,12 +174,9 @@ if args.model_size:
 if args.wandb:
     if "states" in args.dataset:
         wandb.init(project="regular-language-scaling-laws", entity=args.entity)
-        wandb.run.name = "{}_{}".format(args.dataset, args.model_size)
     else:
-        wandb.init(project="{}-scaling-laws".format(args.dataset), entity=args.entity)
-        wandb.run.name = args.model_size
-
-    wandb.run.save()
+        wandb.init(project="natural-language-scaling-laws", entity=args.entity)
+    wandb.run.name = "{}_{}".format(args.dataset, args.model_size)
 
 if args.d_embd < 0:
     args.d_embd = args.d_model
@@ -442,7 +439,7 @@ def train():
                 wandb.log(
                     {
                         "epoch": epoch,
-                        "val_loss": loss,
+                        "val_loss": val_loss,
                         "val_ppl": math.exp(val_loss),
                         "val_bpc": (val_loss / math.log(2)),
                         "val_tokens": total_tokens * (train_step // args.eval_interval),
@@ -520,6 +517,7 @@ except KeyboardInterrupt:
     logging("-" * 100)
     logging("Exiting from training early")
 
+
 # Load the best saved model.
 with open(os.path.join(args.work_dir, "model.pt"), "rb") as f:
     model = torch.load(f)
@@ -543,4 +541,9 @@ if args.wandb:
         }
     )
 
+if early_stop and args.wandb:
+    wandb.run.summary['early_stop'] = train_step
+else:
+    wandb.run.summary['early_stop'] = -1
+ 
 logging("=" * 100)

@@ -10,7 +10,6 @@ if [[ $1 == 'train' ]]; then
         --n_positions 500 \
         --n_ctx 128 \
         --optim adam \
-        --lr 0.00025 \
         --warmup_step 0 \
         --max_step 400000 \
         --batch_size 4 \
@@ -24,7 +23,6 @@ if [[ $1 == 'train' ]]; then
         --n_positions 500 \
         --n_ctx 128 \
         --optim adam \
-        --lr 0.00025 \
         --warmup_step 0 \
         --max_step 400000 \
         --batch_size 4 \
