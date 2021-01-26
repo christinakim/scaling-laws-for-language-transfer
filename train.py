@@ -73,10 +73,7 @@ parser.add_argument(
     help="optimizer to use.",
 )
 parser.add_argument(
-    "--lr",
-    type=float,
-    default=0.00025,
-    help="initial learning rate",
+    "--lr", type=float, default=0.00025, help="initial learning rate",
 )
 parser.add_argument(
     "--scheduler",
@@ -144,25 +141,23 @@ parser.add_argument(
 parser.add_argument(
     "--sample-interval", type=int, default=1000, help="sample interval",
 )
-parser.add_argument(
-    "--entity", type=str, default="openai-scholars"
-)
+parser.add_argument("--entity", type=str, default="openai-scholars")
 
 args = parser.parse_args()
 
 if not args.wandb:
-    #if we aren't logging then we don't need to save
+    # if we aren't logging then we don't need to save
     args.debug = True
 
 if args.wandb:
-    if 'states' in args.dataset:
+    if "states" in args.dataset:
         wandb.init(project="regular-language-scaling-laws", entity=args.entity)
     else:
         wandb.init(project=args.dataset, entity=args.entity)
 
 
 if args.model_size:
-    print('model config of size {}'.format(args.model_size))
+    print("model config of size {}".format(args.model_size))
     config = common_models_by_name.get(args.model_size)
     args.n_layer = config.n_layer
     args.d_model = config.d_model
@@ -197,7 +192,7 @@ device = torch.device("cuda" if args.cuda else "cpu")
 corpus = get_lm_corpus(args.data, args.dataset)
 ntokens = len(corpus.vocab)
 args.n_tokens = ntokens
-if 'states' in args.dataset:
+if "states" in args.dataset:
     args.regex = corpus.regex
     regex_compiled = re.compile(str(args.regex))
 
@@ -332,7 +327,6 @@ def train():
         logits, loss = para_model(data, target)
         model.zero_grad()
 
-
         loss.backward()
         train_loss += loss.float().item()
 
@@ -344,7 +338,10 @@ def train():
 
         # step-wise learning rate annealing
         train_step += 1
-        if args.scheduler in ["cosine", "constant",]:
+        if args.scheduler in [
+            "cosine",
+            "constant",
+        ]:
             # linear warmup stage
             if train_step < args.warmup_step:
                 curr_lr = args.lr * train_step / args.warmup_step
@@ -412,7 +409,7 @@ def train():
                         "val_loss": loss,
                         "val_ppl": math.exp(val_loss),
                         "val_bpc": (val_loss / math.log(2)),
-                        "val_tokens": total_tokens * (train_step//args.eval_interval),
+                        "val_tokens": total_tokens * (train_step // args.eval_interval),
                     }
                 )
             logging(log_str)
@@ -427,11 +424,23 @@ def train():
                         torch.save(optimizer.state_dict(), f)
                 best_val_loss = val_loss
 
-
             eval_start_time = time.time()
-        if 'states' in args.dataset and args.sample and train_step % args.sample_interval == 0:
+        if (
+            "states" in args.dataset
+            and args.sample
+            and train_step % args.sample_interval == 0
+        ):
             # sample here
-            words = sample_words(model, 100, corpus.vocab.sym2idx, corpus.vocab.idx2sym,  device=device, temperature=1.0, sample=True, top_k=10)
+            words = sample_words(
+                model,
+                100,
+                corpus.vocab.sym2idx,
+                corpus.vocab.idx2sym,
+                device=device,
+                temperature=1.0,
+                sample=True,
+                top_k=10,
+            )
             good_samples = list(filter(regex_compiled.match, words))
             logging("-" * 100)
             logging(good_samples)
@@ -439,9 +448,7 @@ def train():
             logging("-" * 100)
 
             if args.wandb:
-                wandb.log({
-                    "sample_accuracy": len(good_samples)
-                })
+                wandb.log({"sample_accuracy": len(good_samples)})
         if train_step == args.max_step:
             break
 

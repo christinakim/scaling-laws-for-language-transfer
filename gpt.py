@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+
 class GPTConfig:
     embd_pdrop = 0.1
     resid_pdrop = 0.1
@@ -12,7 +13,7 @@ class GPTConfig:
     def __init__(self, vocab_size, context_length, **kwargs):
         self.vocab_size = vocab_size
         self.block_size = context_length
-        for k,v in kwargs.items():
+        for k, v in kwargs.items():
             setattr(self, k, v)
 
 

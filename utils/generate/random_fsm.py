@@ -9,6 +9,6 @@ class FiniteAutomata:
     start: List[int]
     transitions: Dict[int, List[int]]
 
+
 def create_random_fsm(states, alphabet, final_states):
     transitions = {state: {} for state in states}
-

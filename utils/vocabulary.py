@@ -22,7 +22,9 @@ class Vocab(object):
         self.delimiter = delimiter
         self.vocab_file = vocab_file
 
-    def tokenize(self, line, add_bos_and_eos=False, add_eos=False, add_double_eos=False):
+    def tokenize(
+        self, line, add_bos_and_eos=False, add_eos=False, add_double_eos=False
+    ):
         line = line.strip()
         # convert to lower case
         if self.lower_case:

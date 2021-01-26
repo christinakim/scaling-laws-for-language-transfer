@@ -188,8 +188,6 @@ class Corpus(object):
         self.dataset = dataset
         self.vocab = Vocab(*args, **kwargs)
 
-
-
         if self.dataset in ["ptb", "wikitext-2", "enwik8", "text8"]:
             self.vocab.count_file(os.path.join(path, "train.txt"))
             self.vocab.count_file(os.path.join(path, "valid.txt"))
@@ -206,7 +204,7 @@ class Corpus(object):
             train_paths = glob.glob(train_path_pattern)
             # the vocab will load from file when build_vocab() is called
         elif "states" in self.dataset:
-            info_file = os.path.join(path, 'info.txt')
+            info_file = os.path.join(path, "info.txt")
             with open(info_file) as f:
                 first_line = f.readline().strip()
                 self.regex = first_line.replace("regex=", "")
@@ -248,13 +246,19 @@ class Corpus(object):
             )
         elif "states" in self.dataset:
             self.train = self.vocab.encode_file(
-                os.path.join(path, "0_shard_shuff.txt"), ordered=True, add_bos_and_eos=True
+                os.path.join(path, "0_shard_shuff.txt"),
+                ordered=True,
+                add_bos_and_eos=True,
             )
             self.valid = self.vocab.encode_file(
-                os.path.join(path, "1_shard_shuff.txt"), ordered=True, add_bos_and_eos=True
+                os.path.join(path, "1_shard_shuff.txt"),
+                ordered=True,
+                add_bos_and_eos=True,
             )
             self.test = self.vocab.encode_file(
-                os.path.join(path, "2_shard_shuff.txt"), ordered=True, add_bos_and_eos=True
+                os.path.join(path, "2_shard_shuff.txt"),
+                ordered=True,
+                add_bos_and_eos=True,
             )
 
     def get_iterator(self, split, *args, **kwargs):
@@ -276,7 +280,8 @@ class Corpus(object):
         elif split in ["valid", "test"]:
             data = self.valid if split == "valid" else self.test
             if (
-                self.dataset in ["ptb", "wikitext-2", "wikitext-103", "enwik8", "text8",]
+                self.dataset
+                in ["ptb", "wikitext-2", "wikitext-103", "enwik8", "text8",]
                 or "states" in self.dataset
             ):
                 data_iter = LMOrderedIterator(data, *args, **kwargs)
@@ -306,7 +311,7 @@ def get_lm_corpus(datadir, dataset):
             kwargs["vocab_file"] = os.path.join(datadir, "1b_word_vocab.txt")
         elif dataset in ["enwik8", "text8"]:
             pass
-        elif dataset == 'simple_wiki':
+        elif dataset == "simple_wiki":
             kwargs["special"] = ["<eos>", "<bos>"]
             kwargs["delimiter"] = "\n"
         else:

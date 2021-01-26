@@ -4,17 +4,20 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
+
 def top_k_logits(logits, k):
     v, ix = torch.topk(logits, k)
     out = logits.clone()
-    out[out < v[:, [-1]]] = -float('Inf')
+    out[out < v[:, [-1]]] = -float("Inf")
     return out
+
 
 @torch.no_grad()
 def sample(model, x, steps, temperature=1.0, sample=False, top_k=None):
@@ -27,7 +30,9 @@ def sample(model, x, steps, temperature=1.0, sample=False, top_k=None):
     block_size = model.get_block_size()
     model.eval()
     for k in range(steps):
-        x_cond = x if x.size(1) <= block_size else x[:, -block_size:] # crop context if needed
+        x_cond = (
+            x if x.size(1) <= block_size else x[:, -block_size:]
+        )  # crop context if needed
         logits, _ = model(x_cond)
         # pluck the logits at the final step and scale by temperature
         logits = logits[:, -1, :] / temperature
@@ -48,7 +53,16 @@ def sample(model, x, steps, temperature=1.0, sample=False, top_k=None):
 
 
 @torch.no_grad()
-def sample_words(model, num_words, sym2idx, idx2sym, device, temperature=1.0, sample=False, top_k=None):
+def sample_words(
+    model,
+    num_words,
+    sym2idx,
+    idx2sym,
+    device,
+    temperature=1.0,
+    sample=False,
+    top_k=None,
+):
 
     block_size = model.get_block_size()
     model.eval()
@@ -57,7 +71,9 @@ def sample_words(model, num_words, sym2idx, idx2sym, device, temperature=1.0, sa
         ix = None
         x = torch.tensor([sym2idx["<bos>"]], dtype=torch.long)[None, ...].to(device)
         while ix != sym2idx["<eos>"]:
-            x_cond = x if x.size(1) <= block_size else x[:, -block_size:] # crop context if needed
+            x_cond = (
+                x if x.size(1) <= block_size else x[:, -block_size:]
+            )  # crop context if needed
             logits, _ = model(x_cond)
             # pluck the logits at the final step and scale by temperature
             logits = logits[:, -1, :] / temperature
@@ -73,7 +89,7 @@ def sample_words(model, num_words, sym2idx, idx2sym, device, temperature=1.0, sa
                 _, ix = torch.topk(probs, k=1, dim=-1)
             # append to the sequence and continue
             x = torch.cat((x, ix), dim=1)
-        completion = ''.join([idx2sym[int(i)] for i in x[0][1:-1]])
+        completion = "".join([idx2sym[int(i)] for i in x[0][1:-1]])
 
         words.append(completion)
     model.train()
