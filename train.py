@@ -217,21 +217,23 @@ args.n_all_param = sum([p.nelement() for p in model.parameters()])
 args.n_nonemb_param = sum([p.nelement() for p in model.parameters() if p.requires_grad])
 
 model = model.to(device)
+raw_model = model
 if args.multi_gpu:
     model = nn.DataParallel(model).to(device)
+    raw_model = model.module if hasattr(self.model, "module") else model
 
 if args.optim.lower() == "adam":
     if args.sample_softmax > 0:
         dense_params, sparse_params = [], []
-        for param in model.parameters():
-            if param.size() == model.word_emb.weight.size():
+        for param in raw_model.parameters():
+            if param.size() == raw_model.word_emb.weight.size():
                 sparse_params.append(param)
             else:
                 dense_params.append(param)
         optimizer_sparse = optim.SparseAdam(sparse_params, lr=args.lr)
         optimizer = optim.Adam(dense_params, lr=args.lr)
     else:
-        optimizer = optim.Adam(model.parameters(), lr=args.lr)
+        optimizer = optim.Adam(raw_model.parameters(), lr=args.lr)
 else:
     raise NotImplementedError
 

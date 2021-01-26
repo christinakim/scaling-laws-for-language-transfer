@@ -90,6 +90,7 @@ class Trainer:
         for epoch in itertools.count(start=1):
             for batch, (data, target, seq_len) in enumerate(self.train_iter):
                 logits, loss = self.model(data, target)
+                loss = loss.mean()
                 self.model.zero_grad()
 
                 loss.backward()
@@ -179,12 +180,13 @@ class Trainer:
                     # Save the model if the validation loss is the best we've seen so far.
                     if not self.best_val_loss or val_loss < self.best_val_loss:
                         if not self.args.debug:
+                            raw_model = self.model.module if hasattr(self.model, "module") else self.model
                             self.logger("saving new model")
                             with open(
                                 os.path.join(self.args.work_dir, "model.pt"), "wb"
                             ) as f:
 
-                                torch.save(self.model, f)
+                                torch.save(raw_model, f)
                             with open(
                                 os.path.join(self.args.work_dir, "optimizer.pt"), "wb"
                             ) as f:
