@@ -73,7 +73,10 @@ parser.add_argument(
     help="optimizer to use.",
 )
 parser.add_argument(
-    "--lr", type=float, default=0.00025, help="initial learning rate",
+    "--lr",
+    type=float,
+    default=0.00025,
+    help="initial learning rate",
 )
 parser.add_argument(
     "--scheduler",
@@ -133,13 +136,20 @@ parser.add_argument(
     help="number of samples in sampled softmax",
 )
 parser.add_argument(
-    "--wandb", action="store_false", help="Log to wandb if absent",
+    "--wandb",
+    action="store_false",
+    help="Log to wandb if absent",
 )
 parser.add_argument(
-    "--sample", action="store_true", help="if included sample",
+    "--sample",
+    action="store_true",
+    help="if included sample",
 )
 parser.add_argument(
-    "--sample-interval", type=int, default=1000, help="sample interval",
+    "--sample-interval",
+    type=int,
+    default=1000,
+    help="sample interval",
 )
 parser.add_argument("--entity", type=str, default="openai-scholars")
 
@@ -173,7 +183,13 @@ assert args.batch_size % args.batch_chunk == 0
 
 args.work_dir = "{}-{}".format(args.work_dir, args.dataset)
 args.work_dir = os.path.join(args.work_dir, time.strftime("%Y%m%d-%H%M%S"))
-logging = create_exp_dir(args.work_dir, scripts_to_save=["train.py",], debug=args.debug)
+logging = create_exp_dir(
+    args.work_dir,
+    scripts_to_save=[
+        "train.py",
+    ],
+    debug=args.debug,
+)
 
 # Set the random seed manually for reproducibility.
 np.random.seed(args.seed)
@@ -197,9 +213,24 @@ if "states" in args.dataset:
     regex_compiled = re.compile(str(args.regex))
 
 eval_batch_size = 5
-train_iter = corpus.get_iterator("train", args.batch_size, args.n_ctx, device=device,)
-val_iter = corpus.get_iterator("valid", eval_batch_size, args.n_ctx, device=device,)
-test_iter = corpus.get_iterator("test", eval_batch_size, args.n_ctx, device=device,)
+train_iter = corpus.get_iterator(
+    "train",
+    args.batch_size,
+    args.n_ctx,
+    device=device,
+)
+val_iter = corpus.get_iterator(
+    "valid",
+    eval_batch_size,
+    args.n_ctx,
+    device=device,
+)
+test_iter = corpus.get_iterator(
+    "test",
+    eval_batch_size,
+    args.n_ctx,
+    device=device,
+)
 
 ###############################################################################
 # Build the model
