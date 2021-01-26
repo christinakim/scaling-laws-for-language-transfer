@@ -1,13 +1,12 @@
 # coding: utf-8
 import argparse
-import time
 import math
-import os, sys
+import os
+import time
 
 import torch
 
 from data_utils import get_lm_corpus
-from mem_transformer import MemTransformerLM
 from utils.exp_utils import get_logger
 
 parser = argparse.ArgumentParser(description="PyTorch Transformer Language Model")

@@ -1,7 +1,6 @@
 import functools
-import os, shutil
-
-import numpy as np
+import os
+import shutil
 
 import torch
 
