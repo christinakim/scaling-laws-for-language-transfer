@@ -1,7 +1,6 @@
-import os, sys
 import glob
+import os
 
-from collections import Counter, OrderedDict
 import numpy as np
 import torch
 
