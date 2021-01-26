@@ -7,7 +7,6 @@ import torch
 import wandb
 
 
-from train import regex_compiled
 from utils.sample import sample_words
 
 
@@ -222,7 +221,7 @@ class Trainer:
                         sample=True,
                         top_k=10,
                     )
-                    good_samples = list(filter(regex_compiled.match, words))
+                    good_samples = list(filter(self.corpus.regex_compiled.match, words))
                     self.logger("-" * 100)
                     self.logger(good_samples)
                     self.logger("sample accuracy {:3d}".format(len(good_samples)))
