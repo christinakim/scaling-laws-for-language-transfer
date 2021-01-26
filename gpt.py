@@ -54,7 +54,7 @@ common_models_by_name = {
         size="x5small", n_layer=2, d_model=128, learning_rate=0.00202,
     ),
     "x4small": ModelSettings(
-        size="x4small", n_layer=4, d_model=256, learning_rate=0.00173,
+        size="x4small", n_layer=4, d_model=256, learning_rate=0.002,
     ),
     "x3small": ModelSettings(
         size="x3small", n_layer=4, d_model=512, learning_rate=0.00163,

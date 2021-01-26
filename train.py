@@ -75,7 +75,7 @@ parser.add_argument(
 parser.add_argument(
     "--lr",
     type=float,
-    default=0.00025,
+    default=-1.0,
     help="initial learning rate",
 )
 parser.add_argument(
@@ -152,6 +152,7 @@ parser.add_argument(
     help="sample interval",
 )
 parser.add_argument("--entity", type=str, default="openai-scholars")
+parser.add_argument("--n_val_stop", type=int, default=3)
 
 args = parser.parse_args()
 
@@ -159,22 +160,26 @@ if not args.wandb:
     # if we aren't logging then we don't need to save
     args.debug = True
 
-if args.wandb:
-    if "states" in args.dataset:
-        wandb.init(project="regular-language-scaling-laws", entity=args.entity)
-    else:
-        wandb.init(project=args.dataset, entity=args.entity)
-
-
 if args.model_size:
     print("model config of size {}".format(args.model_size))
     config = common_models_by_name.get(args.model_size)
     args.n_layer = config.n_layer
     args.d_model = config.d_model
-    args.lr = config.learning_rate
+    if args.lr < 0:
+        args.lr = config.learning_rate
     args.n_head = config.n_head
     args.d_ff = config.d_ff
     args.d_attn = config.d_attn
+
+if args.wandb:
+    if "states" in args.dataset:
+        wandb.init(project="regular-language-scaling-laws", entity=args.entity)
+        wandb.run.name = "{}_{}".format(args.dataset, args.model_size)
+    else:
+        wandb.init(project="{}-scaling-laws".format(args.dataset), entity=args.entity)
+        wandb.run.name = args.model_size
+
+    wandb.run.save()
 
 if args.d_embd < 0:
     args.d_embd = args.d_model
@@ -348,10 +353,9 @@ def evaluate(eval_iter):
 
     return total_loss / total_len, total_len
 
-
 def train():
     # Turn on training mode which enables dropout.
-    global train_step, train_loss, best_val_loss, eval_start_time, log_start_time
+    global early_stop, train_step, train_loss, best_val_loss, eval_start_time, log_start_time
     model.train()
 
     for batch, (data, target, seq_len) in enumerate(train_iter):
@@ -412,8 +416,9 @@ def train():
                         "ppl": math.exp(cur_loss),
                         "loss": cur_loss,
                         "bpc": cur_loss / math.log(2),
-                        "tokens": batch + 1 * args.n_ctx,
-                    }
+                        "tokens": (batch + 1) * args.n_ctx,
+                        "lr": optimizer.param_groups[0]["lr"],
+                    },
                 )
             train_loss = 0
             log_start_time = time.time()
@@ -441,7 +446,8 @@ def train():
                         "val_ppl": math.exp(val_loss),
                         "val_bpc": (val_loss / math.log(2)),
                         "val_tokens": total_tokens * (train_step // args.eval_interval),
-                    }
+                        "eval_step": train_step // args.eval_interval,
+                    },
                 )
             logging(log_str)
             logging("-" * 100)
@@ -454,8 +460,17 @@ def train():
                     with open(os.path.join(args.work_dir, "optimizer.pt"), "wb") as f:
                         torch.save(optimizer.state_dict(), f)
                 best_val_loss = val_loss
+                n_val_no_improve = 0
+            else:
+                n_val_no_improve += 1
+                logging("validation loss hasn't improved in {} evals".format(n_val_no_improve))
 
             eval_start_time = time.time()
+
+            if n_val_no_improve == args.n_val_stop:
+                logging("early stopping due to val loss not decreasing")
+                early_stop = True
+
         if (
             "states" in args.dataset
             and args.sample
@@ -480,7 +495,7 @@ def train():
 
             if args.wandb:
                 wandb.log({"sample_accuracy": len(good_samples)})
-        if train_step == args.max_step:
+        if train_step == args.max_step or early_stop:
             break
 
 
@@ -488,6 +503,7 @@ def train():
 train_step = 0
 train_loss = 0
 best_val_loss = None
+early_stop = False
 
 log_start_time = time.time()
 eval_start_time = time.time()
@@ -496,7 +512,7 @@ eval_start_time = time.time()
 try:
     for epoch in itertools.count(start=1):
         train()
-        if (args.max_epoch and args.max_epoch == epoch) or train_step == args.max_step:
+        if (args.max_epoch and args.max_epoch == epoch) or train_step == args.max_step or early_stop:
             logging("-" * 100)
             logging("End of training")
             break
