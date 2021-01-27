@@ -120,7 +120,7 @@ class Vocab(object):
             )
 
     def encode_file(
-        self, path, ordered=False, verbose=True, add_eos=True, add_double_eos=False
+        self, path, ordered=False, verbose=True, add_eos=True, add_bos_and_eos=False,add_double_eos=False
     ):
         if verbose:
             print("encoding file {} ...".format(path))
@@ -131,7 +131,7 @@ class Vocab(object):
                 if verbose and idx > 0 and idx % 500000 == 0:
                     print("    line {}".format(idx))
                 symbols = self.tokenize(
-                    line, add_eos=add_eos, add_double_eos=add_double_eos
+                    line, add_eos=add_eos, add_bos_and_eos=add_bos_and_eos, add_double_eos=add_double_eos
                 )
                 encoded.append(self.convert_to_tensor(symbols))
 

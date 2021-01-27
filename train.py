@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 import torch
-import torch.nn as nn
+import torch.multiprocessing as mp
 import torch.optim as optim
 import wandb
 
@@ -93,8 +93,6 @@ parser.add_argument("--seed", type=int, default=1111, help="random seed")
 parser.add_argument("--cuda", action="store_true", help="use CUDA")
 parser.add_argument("--adaptive", action="store_true", help="use adaptive softmax")
 
-parser.add_argument("--varlen", action="store_true", help="use variable length")
-parser.add_argument("--multi_gpu", action="store_true", help="use multiple GPU")
 parser.add_argument("--log-interval", type=int, default=10, help="report interval")
 parser.add_argument(
     "--eval_interval", type=int, default=1000, help="evaluation interval"
@@ -134,7 +132,11 @@ parser.add_argument(
 )
 parser.add_argument("--entity", type=str, default="openai-scholars")
 parser.add_argument("--n_val_stop", type=int, default=3)
-
+parser.add_argument('--n_nodes', default=1, type=int, metavar='N')
+parser.add_argument('--n_gpus', default=1, type=int,
+                        help='number of gpus per node')
+parser.add_argument('--nr', default=0, type=int,
+                        help='ranking within the nodes')
 args = parser.parse_args()
 
 if not args.wandb:
@@ -171,6 +173,8 @@ logger = create_exp_dir(args.work_dir, scripts_to_save=["train.py",], debug=args
 # Set the random seed manually for reproducibility.
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
+
+
 if torch.cuda.is_available():
     if not args.cuda:
         print("WARNING: You have a CUDA device, so you should probably run with --cuda")
@@ -178,7 +182,7 @@ if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
 device = torch.device("cuda" if args.cuda else "cpu")
-
+world_size = torch.cuda.device_count()
 ###############################################################################
 # Load data
 ###############################################################################
@@ -190,9 +194,8 @@ if "states" in args.dataset:
     regex_compiled = re.compile(str(args.regex))
 
 eval_batch_size = 5
-train_iter = corpus.get_iterator("train", args.batch_size, args.n_ctx, device=device,)
-val_iter = corpus.get_iterator("valid", eval_batch_size, args.n_ctx, device=device,)
-test_iter = corpus.get_iterator("test", eval_batch_size, args.n_ctx, device=device,)
+
+
 
 ###############################################################################
 # Build the model
@@ -210,24 +213,19 @@ model = GPT(configuration)
 args.n_all_param = sum([p.nelement() for p in model.parameters()])
 args.n_nonemb_param = sum([p.nelement() for p in model.parameters() if p.requires_grad])
 
-model = model.to(device)
-raw_model = model
-if args.multi_gpu:
-    model = nn.DataParallel(model).to(device)
-    raw_model = model.module if hasattr(model, "module") else model
 
 if args.optim.lower() == "adam":
     if args.sample_softmax > 0:
         dense_params, sparse_params = [], []
-        for param in raw_model.parameters():
-            if param.size() == raw_model.word_emb.weight.size():
+        for param in model.parameters():
+            if param.size() == model.word_emb.weight.size():
                 sparse_params.append(param)
             else:
                 dense_params.append(param)
-        optimizer_sparse = optim.SparseAdam(sparse_params, lr=args.lr)
+        optimizer_sparse = optim.SparseAdam(sparse_params, lr=args.lr * world_size)
         optimizer = optim.Adam(dense_params, lr=args.lr)
     else:
-        optimizer = optim.Adam(raw_model.parameters(), lr=args.lr)
+        optimizer = optim.Adam(model.parameters(), lr=args.lr)
 else:
     raise NotImplementedError
 
@@ -282,16 +280,16 @@ trainer = Trainer(
     model=model,
     optimizer=optimizer,
     scheduler=scheduler,
-    train_iter=train_iter,
-    eval_iter=val_iter,
-    test_iter=test_iter,
     logger=logger,
     corpus=corpus,
     args=args,
     device=device,
 )
 try:
-    trainer.train()
+    mp.spawn(trainer.train,
+             args=(world_size, ),
+             nprocs=world_size,
+             join=True)
 
 except KeyboardInterrupt:
     logger("-" * 100)
@@ -305,7 +303,8 @@ with open(os.path.join(args.work_dir, "model.pt"), "rb") as f:
 model = loaded_model.to(device)
 
 # Run on test data.
-test_loss, test_tokens = trainer.test(model)
+test_iter = corpus.get_iterator(0, 1, "test", args.batch_size, args.n_ctx, )
+test_loss, test_tokens = trainer.test(model, test_iter)
 logger("=" * 100)
 logger(
     "| End of training | test loss {:5.2f} | test bpc {:9.5f}| test ppl {:9.3f}".format(

@@ -3,18 +3,20 @@ import os
 
 import numpy as np
 import torch
+from torch.utils.data.dataloader import DataLoader
+from torch.utils.data.dataset import IterableDataset
+from torch.utils.data.distributed import DistributedSampler
 
 from utils.vocabulary import Vocab
 
 
-class LMOrderedIterator(object):
-    def __init__(self, data, bsz, bptt, device="cpu", ext_len=None):
+class LMOrderedIterator(IterableDataset):
+    def __init__(self, data, bsz, bptt, device="cpu"):
         """
             data -- LongTensor -- the LongTensor is strictly ordered
         """
         self.bsz = bsz
         self.bptt = bptt
-        self.ext_len = ext_len if ext_len is not None else 0
 
         self.device = device
 
@@ -36,7 +38,7 @@ class LMOrderedIterator(object):
         seq_len = min(bptt, self.data.size(0) - 1 - i)
 
         end_idx = i + seq_len
-        beg_idx = max(0, i - self.ext_len)
+        beg_idx = i
 
         data = self.data[beg_idx:end_idx]
         target = self.data[i + 1 : i + 1 + seq_len]
@@ -62,9 +64,8 @@ class LMOrderedIterator(object):
     def __iter__(self):
         return self.get_fixlen_iter()
 
-
-class LMShuffledIterator(object):
-    def __init__(self, data, bsz, bptt, device="cpu", ext_len=None, shuffle=False):
+class LMShuffledIterator(IterableDataset):
+    def __init__(self, data, bsz, bptt, device="cpu", shuffle=False):
         """
             data -- list[LongTensor] -- there is no order among the LongTensors
         """
@@ -72,7 +73,6 @@ class LMShuffledIterator(object):
 
         self.bsz = bsz
         self.bptt = bptt
-        self.ext_len = ext_len if ext_len is not None else 0
 
         self.device = device
         self.shuffle = shuffle
@@ -135,7 +135,7 @@ class LMShuffledIterator(object):
 
             yield data, target, self.bptt
 
-            n_retain = min(data.size(0), self.ext_len)
+            n_retain = data.size(0)
             if n_retain > 0:
                 data[:n_retain] = data[-n_retain:]
             data.resize_(n_retain + self.bptt, data.size(1))
@@ -150,20 +150,14 @@ class LMShuffledIterator(object):
 
 class LMMultiFileIterator(LMShuffledIterator):
     def __init__(
-        self, paths, vocab, bsz, bptt, device="cpu", ext_len=None, shuffle=False
+        self, paths, vocab, *args, **kwargs,
     ):
-
+        super().__init__(*args, **kwargs)
         self.paths = paths
         self.vocab = vocab
 
-        self.bsz = bsz
-        self.bptt = bptt
-        self.ext_len = ext_len if ext_len is not None else 0
 
-        self.device = device
-        self.shuffle = shuffle
-
-    def get_sent_stream(self, path):
+    def get_sent_stream_from_path(self, path):
         sents = self.vocab.encode_file(path, add_double_eos=True)
         if self.shuffle:
             np.random.shuffle(sents)
@@ -177,7 +171,7 @@ class LMMultiFileIterator(LMShuffledIterator):
 
         for path in self.paths:
             # sent_stream is an iterator
-            sent_stream = self.get_sent_stream(path)
+            sent_stream = self.get_sent_stream_from_path(path)
             for batch in self.stream_iterator(sent_stream):
                 yield batch
 
@@ -260,7 +254,7 @@ class Corpus(object):
                 add_bos_and_eos=True,
             )
 
-    def get_iterator(self, split, *args, **kwargs):
+    def get_iterator(self, rank, world_size, split, *args, **kwargs):
         if split == "train":
             if self.dataset in [
                 "ptb",
@@ -287,7 +281,9 @@ class Corpus(object):
             elif self.dataset == "lm1b":
                 data_iter = LMShuffledIterator(data, *args, **kwargs)
 
-        return data_iter
+        sampler = DistributedSampler(data_iter, rank=rank, num_replicas=world_size)
+        dataloader = DataLoader(data_iter, batch_size=args.batch_size, shuffle=False, sampler=sampler)
+        return dataloader
 
 
 def get_lm_corpus(datadir, dataset):
