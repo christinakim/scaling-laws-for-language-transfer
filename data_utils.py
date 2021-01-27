@@ -11,29 +11,32 @@ from utils.vocabulary import Vocab
 
 
 class LMOrderedIterator(IterableDataset):
-    def __init__(self, data, len, bsz, bptt=None, device="cpu"):
+    def __init__(self, data, length, bsz, bptt=None, device="cpu"):
         """
             data -- LongTensor -- the LongTensor is strictly ordered
         """
         self.bsz = bsz
-        self.bptt = bptt if bptt else bsz
-        self.len = len
+        self.len = length
+        self.bptt = bptt
 
         self.device = device
 
         # Work out how cleanly we can divide the dataset into bsz parts.
         self.n_step = data.size(0) // bsz
+        self.data = data
 
         # Trim off any extra elements that wouldn't cleanly fit (remainders).
-        data = data.narrow(0, 0, self.n_step * bsz)
+        # data = data.narrow(0, 0, self.n_step * bsz)
 
         # Evenly divide the data across the bsz batches.
-        self.data = data.view(bsz, -1).t().contiguous().to(device)
+        # self.data = data.view(bsz, -1).t().contiguous().to(device)
 
         # Number of mini-batches
-        self.n_batch = (self.n_step + self.bptt - 1) // self.bptt
+        # self.n_batch = (self.n_step + self.bptt - 1) // self.bptt
+    
     def __len__(self):
         return self.len
+
     def get_batch(self, i, bptt=None):
         if bptt is None:
             bptt = self.bptt
@@ -48,8 +51,8 @@ class LMOrderedIterator(IterableDataset):
         return data, target, seq_len
 
     def get_fixlen_iter(self, start=0):
-        for i in range(start, self.data.size(0) - 1, self.bptt):
-            yield self.get_batch(i)
+        #for i in range(start, self.data.size(0) - 1, self.bptt):
+        yield self.get_batch(start)
 
     def __iter__(self):
         return self.get_fixlen_iter()
@@ -274,7 +277,7 @@ class Corpus(object):
                 data_iter = LMShuffledIterator(data, *args, **kwargs)
 
         sampler = DistributedSampler(data_iter, rank=rank, num_replicas=world_size)
-        dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False, sampler=sampler)
+        dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False)
         return dataloader
 
 

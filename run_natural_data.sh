@@ -21,8 +21,11 @@ if [[ $1 == 'train' ]]; then
         --max_step 50000 \
         --batch_size 4 \
         --gpu0_bsz 1 \
-        --eval_interval 500\
-        --max_epoch 20
+        --eval_interval 10\
+        --n_nodes 1 \
+        --n_gpus 4 \
+        --wandb \
+        --max_epoch 100
     
 elif [[ $1 == 'eval' ]]; then
     echo 'Run evaluation...'
