@@ -11,12 +11,13 @@ from utils.vocabulary import Vocab
 
 
 class LMOrderedIterator(IterableDataset):
-    def __init__(self, data, bsz, bptt, device="cpu"):
+    def __init__(self, data, len, bsz, bptt, device="cpu"):
         """
             data -- LongTensor -- the LongTensor is strictly ordered
         """
         self.bsz = bsz
         self.bptt = bptt
+        self.len = len
 
         self.device = device
 
@@ -31,7 +32,8 @@ class LMOrderedIterator(IterableDataset):
 
         # Number of mini-batches
         self.n_batch = (self.n_step + self.bptt - 1) // self.bptt
-
+    def __len__(self):
+        return self.len
     def get_batch(self, i, bptt=None):
         if bptt is None:
             bptt = self.bptt
@@ -49,20 +51,10 @@ class LMOrderedIterator(IterableDataset):
         for i in range(start, self.data.size(0) - 1, self.bptt):
             yield self.get_batch(i)
 
-    def get_varlen_iter(self, start=0, std=5, min_len=5, max_deviation=3):
-        max_len = self.bptt + max_deviation * std
-        i = start
-        while True:
-            bptt = self.bptt if np.random.random() < 0.95 else self.bptt / 2.0
-            bptt = min(max_len, max(min_len, int(np.random.normal(bptt, std))))
-            data, target, seq_len = self.get_batch(i, bptt)
-            i += seq_len
-            yield data, target, seq_len
-            if i >= self.data.size(0) - 2:
-                break
-
     def __iter__(self):
         return self.get_fixlen_iter()
+
+
 
 class LMShuffledIterator(IterableDataset):
     def __init__(self, data, bsz, bptt, device="cpu", shuffle=False):
@@ -263,7 +255,7 @@ class Corpus(object):
                 "enwik8",
                 "text8",
             ]:
-                data_iter = LMOrderedIterator(self.train, *args, **kwargs)
+                data_iter = LMOrderedIterator(self.train, len(self.train) ,*args, **kwargs)
             elif self.dataset == "lm1b":
                 kwargs["shuffle"] = True
                 data_iter = LMMultiFileIterator(self.train, self.vocab, *args, **kwargs)
@@ -277,7 +269,7 @@ class Corpus(object):
                 in ["ptb", "wikitext-2", "wikitext-103", "enwik8", "text8",]
                 or "states" in self.dataset
             ):
-                data_iter = LMOrderedIterator(data, *args, **kwargs)
+                data_iter = LMOrderedIterator(data, len(data), *args, **kwargs)
             elif self.dataset == "lm1b":
                 data_iter = LMShuffledIterator(data, *args, **kwargs)
 
