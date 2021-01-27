@@ -11,12 +11,12 @@ from utils.vocabulary import Vocab
 
 
 class LMOrderedIterator(IterableDataset):
-    def __init__(self, data, len, bsz, bptt, device="cpu"):
+    def __init__(self, data, len, bsz, bptt=None, device="cpu"):
         """
             data -- LongTensor -- the LongTensor is strictly ordered
         """
         self.bsz = bsz
-        self.bptt = bptt
+        self.bptt = bptt if bptt else bsz
         self.len = len
 
         self.device = device
@@ -255,7 +255,7 @@ class Corpus(object):
                 "enwik8",
                 "text8",
             ]:
-                data_iter = LMOrderedIterator(self.train, len(self.train) ,*args, **kwargs)
+                data_iter = LMOrderedIterator(self.train, len(self.train), batch_size,*args, **kwargs)
             elif self.dataset == "lm1b":
                 kwargs["shuffle"] = True
                 data_iter = LMMultiFileIterator(self.train, self.vocab, *args, **kwargs)
@@ -269,7 +269,7 @@ class Corpus(object):
                 in ["ptb", "wikitext-2", "wikitext-103", "enwik8", "text8",]
                 or "states" in self.dataset
             ):
-                data_iter = LMOrderedIterator(data, len(data), *args, **kwargs)
+                data_iter = LMOrderedIterator(data, len(data), batch_size, *args, **kwargs)
             elif self.dataset == "lm1b":
                 data_iter = LMShuffledIterator(data, *args, **kwargs)
 
