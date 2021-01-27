@@ -64,7 +64,7 @@ parser.add_argument(
     help="optimizer to use.",
 )
 parser.add_argument(
-    "--lr", type=float, default=0.00025, help="initial learning rate",
+    "--lr", type=float, default=-1, help="initial learning rate",
 )
 parser.add_argument(
     "--scheduler",
@@ -214,7 +214,7 @@ model = model.to(device)
 raw_model = model
 if args.multi_gpu:
     model = nn.DataParallel(model).to(device)
-    raw_model = model.module if hasattr(self.model, "module") else model
+    raw_model = model.module if hasattr(model, "module") else model
 
 if args.optim.lower() == "adam":
     if args.sample_softmax > 0:
@@ -288,6 +288,7 @@ trainer = Trainer(
     logger=logger,
     corpus=corpus,
     args=args,
+    device=device,
 )
 try:
     trainer.train()

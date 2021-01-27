@@ -108,7 +108,6 @@ class Vocab(object):
 
             for sym in self.special:
                 self.add_special(sym)
-
             for sym, cnt in self.counter.most_common(self.max_size):
                 if cnt < self.min_freq:
                     break

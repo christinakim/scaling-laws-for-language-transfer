@@ -13,16 +13,16 @@ if [[ $1 == 'train' ]]; then
         --d_model 64 \
         --n_head 2 \
         --d_ff 4 \
+        --lr 0.0025 \
         --dropout 0.1 \
         --dropatt 0.0 \
         --optim adam \
-        --lr 0.0000025 \
         --warmup_step 0 \
-        --max_step 400000 \
+        --max_step 50000 \
         --batch_size 4 \
         --gpu0_bsz 1 \
-        --eval_interval 4000\
-        --max_epoch 1
+        --eval_interval 500\
+        --max_epoch 20
     
 elif [[ $1 == 'eval' ]]; then
     echo 'Run evaluation...'

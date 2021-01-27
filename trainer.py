@@ -22,6 +22,7 @@ class Trainer:
         logger,
         corpus,
         args,
+        device,
     ):
         self.model = model
         self.optimizer = optimizer
@@ -40,10 +41,7 @@ class Trainer:
         self.log_start_time = time.time()
         self.eval_start_time = time.time()
         # take over whatever gpus are on the system
-        self.device = "cpu"
-        if torch.cuda.is_available():
-            self.device = torch.cuda.current_device()
-            self.model = torch.nn.DataParallel(self.model).to(self.device)
+        self.device = device
 
     def evaluate(self):
         # Turn on evaluation mode which disables dropout.
@@ -56,6 +54,9 @@ class Trainer:
             for i, (data, target, seq_len) in enumerate(self.eval_iter):
                 if self.args.max_eval_steps > 0 and i >= self.args.max_eval_steps:
                     break
+                if self.args.multi_gpu:
+                    data = data.to(self.device)
+                    target = target.to(self.device)
                 logits, loss = self.model(data, target)
                 loss = loss.mean()
                 total_loss += seq_len * loss.float().item()
@@ -89,8 +90,12 @@ class Trainer:
         self.model.train()
         for epoch in itertools.count(start=1):
             for batch, (data, target, seq_len) in enumerate(self.train_iter):
+                if self.args.multi_gpu:
+                    data = data.to(self.device)
+                    target = target.to(self.device)
                 logits, loss = self.model(data, target)
-                loss = loss.mean()
+                if self.args.multi_gpu:
+                    loss = loss.mean()
                 self.model.zero_grad()
 
                 loss.backward()

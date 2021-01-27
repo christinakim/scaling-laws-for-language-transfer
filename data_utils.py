@@ -302,7 +302,7 @@ def get_lm_corpus(datadir, dataset):
             kwargs["special"] = ["<eos>"]
             kwargs["lower_case"] = False
         elif dataset == "ptb":
-            kwargs["special"] = ["<eos>"]
+            kwargs["special"] = ["<unk>","<eos>"]
             kwargs["lower_case"] = True
         elif dataset == "lm1b":
             kwargs["special"] = []
