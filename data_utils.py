@@ -246,7 +246,7 @@ class Corpus(object):
                 add_bos_and_eos=True,
             )
 
-    def get_iterator(self, rank, world_size, split, *args, **kwargs):
+    def get_iterator(self, rank, world_size, split, batch_size, *args, **kwargs):
         if split == "train":
             if self.dataset in [
                 "ptb",
@@ -274,7 +274,7 @@ class Corpus(object):
                 data_iter = LMShuffledIterator(data, *args, **kwargs)
 
         sampler = DistributedSampler(data_iter, rank=rank, num_replicas=world_size)
-        dataloader = DataLoader(data_iter, batch_size=args.batch_size, shuffle=False, sampler=sampler)
+        dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False, sampler=sampler)
         return dataloader
 
 
