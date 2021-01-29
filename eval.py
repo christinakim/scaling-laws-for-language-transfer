@@ -48,12 +48,8 @@ logging = get_logger(os.path.join(args.work_dir, "log.txt"), log=not args.no_log
 corpus = get_lm_corpus(args.data, args.dataset)
 ntokens = len(corpus.vocab)
 
-va_iter = corpus.get_iterator(
-    "valid", args.batch_size, args.tgt_len, device=device,
-)
-te_iter = corpus.get_iterator(
-    "test", args.batch_size, args.tgt_len, device=device,
-)
+va_iter = corpus.get_iterator("valid", args.batch_size, args.tgt_len, device=device,)
+te_iter = corpus.get_iterator("test", args.batch_size, args.tgt_len, device=device,)
 
 # Load the best saved model.
 with open(os.path.join(args.work_dir, "model.pt"), "rb") as f:

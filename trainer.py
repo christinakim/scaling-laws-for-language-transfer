@@ -4,34 +4,21 @@ import os
 import time
 
 import torch
-import wandb
+import torch.distributed as dist
+import torch.optim as optim
 from torch.nn.parallel.distributed import DistributedDataParallel
 
 from utils.sample import sample_words
-import torch
-import torch.distributed as dist
-import torch.multiprocessing as mp
+
 
 # coding: utf-8
-
-import numpy as np
-import torch
-import torch.multiprocessing as mp
-import torch.optim as optim
-import wandb
 
 
 class Trainer:
     def __init__(
-        self,
-        model,
-        logger,
-        corpus,
-        args,
-        device,
-        
+        self, model, logger, corpus, args, device,
     ):
-        self.non_ddp_model = model
+        self.model = model
 
         self.args = args
         self.early_stop = False
@@ -42,7 +29,7 @@ class Trainer:
         self.corpus = corpus
         self.log_start_time = time.time()
         self.eval_start_time = time.time()
-    
+
     def configure_optimizers(self, model, args):
         if args.optim.lower() == "adam":
             if args.sample_softmax > 0:
@@ -52,7 +39,6 @@ class Trainer:
                         sparse_params.append(param)
                     else:
                         dense_params.append(param)
-                optimizer_sparse = optim.SparseAdam(sparse_params, lr=args.lr)
                 optimizer = optim.Adam(dense_params, lr=args.lr)
             else:
                 optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -87,17 +73,17 @@ class Trainer:
 
         return optimizer, scheduler
 
-    def init_process(self, rank, size, backend='gloo'):
+    def init_process(self, rank, size, backend="gloo"):
         """ Initialize the distributed environment. """
-        os.environ['MASTER_ADDR'] = '127.0.0.1'
-        os.environ['MASTER_PORT'] = '29500'
+        os.environ["MASTER_ADDR"] = "127.0.0.1"
+        os.environ["MASTER_PORT"] = "29500"
         dist.init_process_group(backend, rank=rank, world_size=size)
 
     def cleanup(self):
         dist.destroy_process_group()
 
     def get_model(self):
-        return self.non_ddp_model
+        return self.model
 
     def evaluate(self, model, val_iter, rank):
         # Turn on evaluation mode which disables dropout.
@@ -125,7 +111,6 @@ class Trainer:
         # Turn on evaluation mode which disables dropout.
         model = model.to(0)
         model.eval()
-        
 
         # Evaluation
         total_len, total_loss = 0, 0.0
@@ -144,49 +129,50 @@ class Trainer:
 
     def train(self, rank, world_size):
         self.init_process(rank, world_size)
+        self.logger(f"{rank + 1}/{world_size} process initialized.\n")
+
+
         self.logger(
-            f"{rank + 1}/{world_size} process initialized.\n"
+            f"Rank {rank}/{world_size} training process passed data download barrier.\n"
         )
-        if rank == 0:
-            self.corpus.get_iterator(rank, world_size, "train", self.args.batch_size, self.args.n_ctx,)
-            self.corpus.get_iterator(rank, world_size, "valid", self.args.batch_size, self.args.n_ctx,)
-            self.corpus.get_iterator(rank, world_size, "test", self.args.batch_size, self.args.n_ctx, )
-            self.get_model()
-        dist.barrier()
 
-        self.logger(f"Rank {rank}/{world_size} training process passed data download barrier.\n")
+        model = self.model.to(rank)
 
-
-        model = self.get_model().to(rank)
-        
         model = DistributedDataParallel(model, device_ids=[rank])
-        train_iter = self.corpus.get_iterator(rank, world_size, "train", self.args.batch_size, self.args.n_ctx, )
-        val_iter = self.corpus.get_iterator(rank, world_size, "valid", self.args.batch_size, self.args.n_ctx, )
+        self.train_iter = self.corpus.get_iterator(
+            rank, world_size, "train", self.args.batch_size, self.args.n_ctx,
+        )
+        self.val_iter = self.corpus.get_iterator(
+            rank, world_size, "valid", self.args.batch_size, self.args.n_ctx,
+        )
 
         optimizer, scheduler = self.configure_optimizers(model, self.args)
 
         # Turn on training mode which enables dropout.
         model.train()
         for epoch in itertools.count(start=1):
-            self.train_epoch(rank, epoch, model, optimizer, scheduler, train_iter, val_iter)
+            self.train_epoch(
+                rank, epoch, model, optimizer, scheduler,
+            )
             if (
                 (self.args.max_epoch and self.args.max_epoch == epoch)
                 or self.train_step == self.args.max_step
                 or self.early_stop
-        ):
+            ):
                 self.logger("-" * 100)
                 self.logger("End of training")
                 break
+        self.cleanup()
 
-    def train_epoch(self, rank, epoch, model, optimizer, scheduler, train_iter, val_iter):
+    def train_epoch(
+        self, rank, epoch, model, optimizer, scheduler,
+    ):
         train_loss = 0
         n_val_no_improve = 0
-        for batch, (data, target, seq_len) in enumerate(train_iter):
+        for batch, (data, target, seq_len) in enumerate(self.train_iter):
             data = data.to(rank)
             target = target.to(rank)
             logits, loss = model(data, target)
-            
-            
 
             model.zero_grad()
 
@@ -247,7 +233,7 @@ class Trainer:
                 self.log_start_time = time.time()
 
             if self.train_step % self.args.eval_interval == 0:
-                val_loss, total_tokens = self.evaluate(model, val_iter, rank)
+                val_loss, total_tokens = self.evaluate(model, self.val_iter, rank)
                 if rank == 0:
                     self.logger("-" * 100)
                     log_str = (
@@ -337,9 +323,7 @@ class Trainer:
                 if self.early_stop and self.args.wandb:
                     self.wandb.run.summary["early_stop"] = self.train_step
                 break
-        if (
-            self.early_stop
-        ):
+        if self.early_stop:
             self.logger("-" * 100)
             self.logger("early stopping of training")
             return

@@ -3,11 +3,18 @@ import os
 
 import numpy as np
 import torch
+from tokenizers import ByteLevelBPETokenizer
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import IterableDataset
-from torch.utils.data.distributed import DistributedSampler
 
+from utils.vocabulary import Reader
 from utils.vocabulary import Vocab
+
+
+
+
+
+
 
 
 class LMOrderedIterator(IterableDataset):
@@ -26,14 +33,14 @@ class LMOrderedIterator(IterableDataset):
         self.data = data
 
         # Trim off any extra elements that wouldn't cleanly fit (remainders).
-        # data = data.narrow(0, 0, self.n_step * bsz)
+        data = data.narrow(0, 0, self.n_step * bsz)
 
         # Evenly divide the data across the bsz batches.
-        # self.data = data.view(bsz, -1).t().contiguous().to(device)
+        self.data = data.view(bsz, -1).t().contiguous().to(device)
 
         # Number of mini-batches
-        # self.n_batch = (self.n_step + self.bptt - 1) // self.bptt
-    
+        self.n_batch = (self.n_step + self.bptt - 1) // self.bptt
+
     def __len__(self):
         return self.len
 
@@ -51,12 +58,11 @@ class LMOrderedIterator(IterableDataset):
         return data, target, seq_len
 
     def get_fixlen_iter(self, start=0):
-        #for i in range(start, self.data.size(0) - 1, self.bptt):
-        yield self.get_batch(start)
+        for i in range(start, self.data.size(0) - 1, self.bptt):
+            yield self.get_batch(start)
 
     def __iter__(self):
         return self.get_fixlen_iter()
-
 
 
 class LMShuffledIterator(IterableDataset):
@@ -151,8 +157,35 @@ class LMMultiFileIterator(LMShuffledIterator):
         self.paths = paths
         self.vocab = vocab
 
+    def get_sent_stream_from_path(self, path):
+        sents = self.vocab.encode_file(path, add_double_eos=True)
+        if self.shuffle:
+            np.random.shuffle(sents)
+        sent_stream = iter(sents)
+
+        return sent_stream
+
+    def __iter__(self):
+        if self.shuffle:
+            np.random.shuffle(self.paths)
+
+        for path in self.paths:
+            # sent_stream is an iterator
+            sent_stream = self.get_sent_stream_from_path(path)
+            for batch in self.stream_iterator(sent_stream):
+                yield batch
+
+
+class WebTextFileIterator(LMShuffledIterator):
+    def __init__(
+        self, paths, vocab, *args, **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.paths = paths
+        self.vocab = vocab
 
     def get_sent_stream_from_path(self, path):
+
         sents = self.vocab.encode_file(path, add_double_eos=True)
         if self.shuffle:
             np.random.shuffle(sents)
@@ -258,7 +291,9 @@ class Corpus(object):
                 "enwik8",
                 "text8",
             ]:
-                data_iter = LMOrderedIterator(self.train, len(self.train), batch_size,*args, **kwargs)
+                data_iter = LMOrderedIterator(
+                    self.train, len(self.train), batch_size, *args, **kwargs
+                )
             elif self.dataset == "lm1b":
                 kwargs["shuffle"] = True
                 data_iter = LMMultiFileIterator(self.train, self.vocab, *args, **kwargs)
@@ -272,12 +307,13 @@ class Corpus(object):
                 in ["ptb", "wikitext-2", "wikitext-103", "enwik8", "text8",]
                 or "states" in self.dataset
             ):
-                data_iter = LMOrderedIterator(data, len(data), batch_size, *args, **kwargs)
+                data_iter = LMOrderedIterator(
+                    data, len(data), batch_size, *args, **kwargs
+                )
             elif self.dataset == "lm1b":
                 data_iter = LMShuffledIterator(data, *args, **kwargs)
 
-        sampler = DistributedSampler(data_iter, rank=rank, num_replicas=world_size)
-        dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False)
+        dataloader = DataLoader(data_iter, batch_size=None, shuffle=False)
         return dataloader
 
 
@@ -293,7 +329,7 @@ def get_lm_corpus(datadir, dataset):
             kwargs["special"] = ["<eos>"]
             kwargs["lower_case"] = False
         elif dataset == "ptb":
-            kwargs["special"] = ["<unk>","<eos>"]
+            kwargs["special"] = ["<unk>", "<eos>"]
             kwargs["lower_case"] = True
         elif dataset == "lm1b":
             kwargs["special"] = []
