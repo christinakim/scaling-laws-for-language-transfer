@@ -46,7 +46,7 @@ class Vocab(object):
 
         if add_double_eos:  # lm1b
             return ["<S>"] + symbols + ["<S>"]
-        elif add_eos:
+        elif add_eos and not add_bos_and_eos:
             return symbols + ["<EOS>"]
         elif add_bos_and_eos:
             return ["<BOS>"] + list(symbols) + ["<EOS>"]

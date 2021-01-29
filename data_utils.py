@@ -2,14 +2,36 @@ import glob
 import os
 from pathlib import Path
 
+import itertools
 import numpy as np
 import torch
 from tokenizers import ByteLevelBPETokenizer
 from torch.utils.data.dataloader import DataLoader
-from torch.utils.data.dataset import IterableDataset
+from torch.utils.data.dataset import Dataset, IterableDataset
 
 from utils.vocabulary import Vocab
 
+
+class WebTextDataset(Dataset):
+    def __init__(
+        self, dataset_path, seq_len, vocab,
+    ):
+        self.vocab = vocab
+        self.data = list(itertools.chain.from_iterable(self.vocab.encode_zst(dataset_path)))
+        self.seq_len = seq_len
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, i):
+        end_idx = i + self.seq_len
+        beg_idx = i
+
+        data = self.data[beg_idx:end_idx]
+        target = self.data[i + 1 : i + 1 + self.seq_len]
+        print(data)
+
+        return data, target, self.seq_len
 
 class LMOrderedIterator(IterableDataset):
     def __init__(self, data, length, bsz, bptt=None, device="cpu"):
@@ -92,7 +114,6 @@ class LMShuffledIterator(IterableDataset):
         target = torch.LongTensor(self.bptt, self.bsz)
 
         n_retain = 0
-
         while True:
             # data   : [n_retain+bptt x bsz]
             # target : [bptt x bsz]
@@ -130,7 +151,7 @@ class LMShuffledIterator(IterableDataset):
 
             yield data, target, self.bptt
 
-            n_retain = data.size(0)
+            n_retain = 0
             if n_retain > 0:
                 data[:n_retain] = data[-n_retain:]
             data.resize_(n_retain + self.bptt, data.size(1))
@@ -291,9 +312,9 @@ class Corpus(object):
                 kwargs["shuffle"] = True
                 data_iter = LMMultiFileIterator(self.train, self.vocab, *args, **kwargs)
             elif "states" in self.dataset:
-                data_iter = LMOrderedIterator(self.train, *args, **kwargs)
+                data_iter = LMOrderedIterator(self.train, len(self.train), batch_size, n_ctx, *args, **kwargs)
             elif self.dataset == "openwebtext2":
-                data_iter = WebTextFileIterator(self.train, self.vocab, rank, world_size, batch_size, n_ctx, *args, **kwargs)
+                data_iter = WebTextDataset(self.train[0], n_ctx, self.vocab, *args, **kwargs)
 
         elif split in ["valid", "test"]:
             data = self.valid if split == "valid" else self.test
@@ -303,7 +324,7 @@ class Corpus(object):
                 or "states" in self.dataset
             ):
                 data_iter = LMOrderedIterator(
-                    data, len(data), batch_size, *args, **kwargs
+                    data, len(data), batch_size, n_ctx, *args, **kwargs
                 )
             elif self.dataset == "lm1b":
                 data_iter = LMShuffledIterator(data, *args, **kwargs)

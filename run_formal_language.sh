@@ -22,7 +22,10 @@ if [[ $1 == 'train' ]]; then
         --max_step 400000 \
         --batch_size 4 \
         --gpu0_bsz 1 \
-        --max_epoch 1
+        --n_nodes 1 \
+        --n_gpus 4 \
+        --wandb \
+        --max_epoch 1 
 elif [[ $1 == 'eval' ]]; then
     echo 'Run evaluation...'
     python eval.py \

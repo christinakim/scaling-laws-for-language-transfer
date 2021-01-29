@@ -100,8 +100,8 @@ class Trainer:
                 target = target.to(rank)
                 logits, loss = model(data, target)
                 loss = loss.mean()
-                total_loss += seq_len.item() * loss.float().item()
-                total_len += seq_len.item()
+                total_loss += seq_len * loss.float()
+                total_len += seq_len
 
         # Switch back to the training mode
         model.train()
@@ -122,8 +122,8 @@ class Trainer:
                 target = target.to(0)
                 logits, loss = model(data, target)
                 loss = loss.mean()
-                total_loss += seq_len.item() * loss.float().item()
-                total_len += seq_len.item()
+                total_loss += seq_len * loss.float()
+                total_len += seq_len
 
         return total_loss / total_len, total_len
 
