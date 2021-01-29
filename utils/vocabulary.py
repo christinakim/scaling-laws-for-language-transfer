@@ -98,10 +98,20 @@ class Vocab(object):
         self.eos_idx = self.sym2idx["<eos>"]
         self.bos_idx = self.sym2idx["<bos>"]
 
+    def _build_from_tokenizer(self):
+        data = self.tokenizer.get_vocab()
+        self.sym2idx = data
+        self.idx2sym = {value:key for key, value in data.items()}
+
     def build_vocab(self):
-        if self.vocab_file:
+        if self.vocab_file and self.tokenizer is None:
             print("building vocab from {}".format(self.vocab_file))
             self._build_from_file(self.vocab_file)
+            print("final vocab size {}".format(len(self)))
+            print("symbols: {}".format(list(self.sym2idx.keys())))
+        elif self.tokenizer:
+            print("building vocab from tokenizer")
+            self._build_from_tokenizer()
             print("final vocab size {}".format(len(self)))
             print("symbols: {}".format(list(self.sym2idx.keys())))
         else:
@@ -174,7 +184,7 @@ class Vocab(object):
                 print("    line {}".format(idx))
             symbols = self.tokenizer.encode(
                     document,
-                )
+                ).tokens
             encoded.append(self.convert_to_tensor(symbols))
             idx += 1
 

@@ -147,7 +147,7 @@ class LMMultiFileIterator(LMShuffledIterator):
     def __init__(
         self, paths, vocab, *args, **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(paths, vocab, *args, **kwargs)
         self.paths = paths
         self.vocab = vocab
 
@@ -170,14 +170,13 @@ class LMMultiFileIterator(LMShuffledIterator):
                 yield batch
 
 
-class WebTextFileIterator(LMShuffledIterator):
+class WebTextFileIterator(LMMultiFileIterator):
     def __init__(
-        self, paths, vocab, rank, world_size, *args, **kwargs,
+        self, data, vocab, rank, world_size, bsz, bptt, *args, **kwargs,
     ):
-        super().__init__(*args, **kwargs)
-        paths = [path for i, path in enumerate(paths) if i % world_size == rank]
-        self.paths = paths
-        self.vocab = vocab
+        data = [path for i, path in enumerate(data) if i % world_size == rank]
+        print("rank {} has files {}".format(rank, data))
+        super().__init__(data, vocab, bsz, bptt, *args, **kwargs)
 
     def get_sent_stream_from_path(self, path):
 
@@ -187,16 +186,6 @@ class WebTextFileIterator(LMShuffledIterator):
         sent_stream = iter(sents)
 
         return sent_stream
-
-    def __iter__(self):
-        if self.shuffle:
-            np.random.shuffle(self.paths)
-
-        for path in self.paths:
-            # sent_stream is an iterator
-            sent_stream = self.get_sent_stream_from_path(path)
-            for batch in self.stream_iterator(sent_stream):
-                yield batch
 
 
 class Corpus(object):
@@ -286,7 +275,7 @@ class Corpus(object):
             self.valid = valid_paths
             self.test = test_paths
 
-    def get_iterator(self, rank, world_size, split, batch_size, *args, **kwargs):
+    def get_iterator(self, rank, world_size, split,  batch_size, n_ctx, *args, **kwargs):
         if split == "train":
             if self.dataset in [
                 "ptb",
@@ -304,7 +293,7 @@ class Corpus(object):
             elif "states" in self.dataset:
                 data_iter = LMOrderedIterator(self.train, *args, **kwargs)
             elif self.dataset == "openwebtext2":
-                data_iter = WebTextFileIterator(self.train, self.vocab, rank, world_size, *args, **kwargs)
+                data_iter = WebTextFileIterator(self.train, self.vocab, rank, world_size, batch_size, n_ctx, *args, **kwargs)
 
         elif split in ["valid", "test"]:
             data = self.valid if split == "valid" else self.test
@@ -319,7 +308,7 @@ class Corpus(object):
             elif self.dataset == "lm1b":
                 data_iter = LMShuffledIterator(data, *args, **kwargs)
             elif self.dataset == "openwebtext2":
-                data_iter = WebTextFileIterator(data, self.vocab, rank, world_size, *args, **kwargs)
+                data_iter = WebTextFileIterator(data, self.vocab, rank, world_size, batch_size, n_ctx, *args, **kwargs)
         dataloader = DataLoader(data_iter, batch_size=None, shuffle=False)
         return dataloader
 
@@ -352,12 +341,11 @@ def get_lm_corpus(datadir, dataset):
             kwargs["delimiter"] = ""
             kwargs["vocab_file"] = os.path.join(datadir, "vocab.txt")
         elif dataset == "openwebtext2":
-            tokenizer = ByteLevelBPETokenizer()
-            tokenizer.from_file(vocab_filename=datadir + '/gpt2-vocab.json',
+            tokenizer = ByteLevelBPETokenizer().from_file(vocab_filename=datadir + '/gpt2-vocab.json',
                                 merges_filename=datadir + "/gpt2-merges.txt")
 
             kwargs["tokenizer"] = tokenizer
-            kwargs["vocab_file"] = os.path.join(datadir, "vocab.txt")
+            kwargs["vocab_file"] = os.path.join(datadir, "gpt2-vocab.json")
 
         corpus = Corpus(datadir, dataset, **kwargs)
         # torch.save(corpus, fn)
