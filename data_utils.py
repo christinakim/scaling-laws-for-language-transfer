@@ -145,9 +145,9 @@ class LMShuffledIterator(IterableDataset):
 
 class LMMultiFileIterator(LMShuffledIterator):
     def __init__(
-        self, paths, vocab, *args, **kwargs,
+        self, paths, vocab, bsz, bptt, *args, **kwargs,
     ):
-        super().__init__(paths, vocab, *args, **kwargs)
+        super().__init__(paths, bsz, bptt, *args, **kwargs)
         self.paths = paths
         self.vocab = vocab
 
