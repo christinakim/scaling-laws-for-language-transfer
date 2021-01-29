@@ -372,14 +372,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--datadir",
         type=str,
-        default="../data/text8",
+        default="/datadrive/openwebtext2",
         help="location of the data corpus",
     )
     parser.add_argument(
         "--dataset",
         type=str,
-        default="text8",
-        choices=["ptb", "wikitext-2", "wikitext-103", "lm1b", "enwik8", "text8"],
+        default="openwebtext2",
+        choices=["ptb", "wikitext-2", "wikitext-103", "lm1b", "enwik8", "text8", "openwebtext2"],
         help="dataset name",
     )
     args = parser.parse_args()
