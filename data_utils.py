@@ -1,5 +1,6 @@
 import glob
 import os
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -7,14 +8,7 @@ from tokenizers import ByteLevelBPETokenizer
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import IterableDataset
 
-from utils.vocabulary import Reader
 from utils.vocabulary import Vocab
-
-
-
-
-
-
 
 
 class LMOrderedIterator(IterableDataset):
@@ -178,15 +172,16 @@ class LMMultiFileIterator(LMShuffledIterator):
 
 class WebTextFileIterator(LMShuffledIterator):
     def __init__(
-        self, paths, vocab, *args, **kwargs,
+        self, paths, vocab, rank, world_size, *args, **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        paths = [path for i, path in enumerate(paths) if i % world_size == rank]
         self.paths = paths
         self.vocab = vocab
 
     def get_sent_stream_from_path(self, path):
 
-        sents = self.vocab.encode_file(path, add_double_eos=True)
+        sents = self.vocab.encode_zst(path)
         if self.shuffle:
             np.random.shuffle(sents)
         sent_stream = iter(sents)
@@ -234,6 +229,11 @@ class Corpus(object):
             self.vocab.count_file(os.path.join(path, "0_shard_shuff.txt"))
             self.vocab.count_file(os.path.join(path, "1_shard_shuff.txt"))
             self.vocab.count_file(os.path.join(path, "2_shard_shuff.txt"))
+        elif self.dataset == "openwebtext2":
+            all_paths = [str(x) for x in Path(path).glob("**/*.zst")]
+            train_paths = [path for idx, path in enumerate(all_paths) if idx % 10 in (0,2, 4, 6, 8,)]
+            valid_paths = [path for idx, path in enumerate(all_paths) if idx % 10 in (1, 9 )]
+            test_paths = [path for idx, path in enumerate(all_paths) if idx % 10 in (3, 7 )]
 
         self.vocab.build_vocab()
 
@@ -281,6 +281,10 @@ class Corpus(object):
                 ordered=True,
                 add_bos_and_eos=True,
             )
+        elif "openwebtext2":
+            self.train = train_paths
+            self.valid = valid_paths
+            self.test = test_paths
 
     def get_iterator(self, rank, world_size, split, batch_size, *args, **kwargs):
         if split == "train":
@@ -299,6 +303,8 @@ class Corpus(object):
                 data_iter = LMMultiFileIterator(self.train, self.vocab, *args, **kwargs)
             elif "states" in self.dataset:
                 data_iter = LMOrderedIterator(self.train, *args, **kwargs)
+            elif self.dataset == "openwebtext2":
+                data_iter = WebTextFileIterator(self.train, self.vocab, rank, world_size, *args, **kwargs)
 
         elif split in ["valid", "test"]:
             data = self.valid if split == "valid" else self.test
@@ -312,7 +318,8 @@ class Corpus(object):
                 )
             elif self.dataset == "lm1b":
                 data_iter = LMShuffledIterator(data, *args, **kwargs)
-
+            elif self.dataset == "openwebtext2":
+                data_iter = WebTextFileIterator(data, self.vocab, rank, world_size, *args, **kwargs)
         dataloader = DataLoader(data_iter, batch_size=None, shuffle=False)
         return dataloader
 
@@ -340,9 +347,16 @@ def get_lm_corpus(datadir, dataset):
         elif dataset == "simple_wiki":
             kwargs["special"] = ["<eos>", "<bos>"]
             kwargs["delimiter"] = "\n"
-        else:
+        elif "states" in dataset:
             kwargs["special"] = ["<eos>", "<bos>"]
             kwargs["delimiter"] = ""
+            kwargs["vocab_file"] = os.path.join(datadir, "vocab.txt")
+        elif dataset == "openwebtext2":
+            tokenizer = ByteLevelBPETokenizer()
+            tokenizer.from_file(vocab_filename=datadir + '/gpt2-vocab.json',
+                                merges_filename=datadir + "/gpt2-merges.txt")
+
+            kwargs["tokenizer"] = tokenizer
             kwargs["vocab_file"] = os.path.join(datadir, "vocab.txt")
 
         corpus = Corpus(datadir, dataset, **kwargs)

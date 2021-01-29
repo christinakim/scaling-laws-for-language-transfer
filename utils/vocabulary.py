@@ -19,6 +19,7 @@ class Vocab(object):
         lower_case=True,
         delimiter=None,
         vocab_file=None,
+        tokenizer=None,
     ):
         self.counter = Counter()
         self.special = special
@@ -27,6 +28,7 @@ class Vocab(object):
         self.lower_case = lower_case
         self.delimiter = delimiter
         self.vocab_file = vocab_file
+        self.tokenizer = tokenizer
 
     def tokenize(
         self, line, add_bos_and_eos=False, add_eos=False, add_double_eos=False
@@ -159,9 +161,6 @@ class Vocab(object):
         path,
         ordered=False,
         verbose=True,
-        add_eos=True,
-        add_bos_and_eos=False,
-        add_double_eos=False,
     ):
         if verbose:
             print("encoding file {} ...".format(path))
@@ -169,17 +168,15 @@ class Vocab(object):
         encoded = []
 
         reader = Reader()
-        for document, metadata in reader.read_jsonl(path, get_meta=True):
-            for idx, line in enumerate(document):
-                if verbose and idx > 0 and idx % 500000 == 0:
-                    print("    line {}".format(idx))
-                symbols = self.tokenize(
-                    line,
-                    add_eos=add_eos,
-                    add_bos_and_eos=add_bos_and_eos,
-                    add_double_eos=add_double_eos,
+        idx = 0
+        for document in reader.read_jsonl(path):
+            if verbose and idx % 50000 == 0:
+                print("    line {}".format(idx))
+            symbols = self.tokenizer.encode(
+                    document,
                 )
-                encoded.append(self.convert_to_tensor(symbols))
+            encoded.append(self.convert_to_tensor(symbols))
+            idx += 1
 
         if ordered:
             encoded = torch.cat(encoded)
