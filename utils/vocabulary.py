@@ -1,8 +1,13 @@
+import datetime
+import io
+import json
 import os
 from collections import Counter
 from collections import OrderedDict
 
+import jsonlines
 import torch
+import zstandard
 
 
 class Vocab(object):
@@ -14,6 +19,7 @@ class Vocab(object):
         lower_case=True,
         delimiter=None,
         vocab_file=None,
+        tokenizer=None,
     ):
         self.counter = Counter()
         self.special = special
@@ -22,6 +28,7 @@ class Vocab(object):
         self.lower_case = lower_case
         self.delimiter = delimiter
         self.vocab_file = vocab_file
+        self.tokenizer = tokenizer
 
     def tokenize(
         self, line, add_bos_and_eos=False, add_eos=False, add_double_eos=False
@@ -39,7 +46,7 @@ class Vocab(object):
 
         if add_double_eos:  # lm1b
             return ["<S>"] + symbols + ["<S>"]
-        elif add_eos:
+        elif add_eos and not add_bos_and_eos:
             return symbols + ["<EOS>"]
         elif add_bos_and_eos:
             return ["<BOS>"] + list(symbols) + ["<EOS>"]
@@ -91,10 +98,20 @@ class Vocab(object):
         self.eos_idx = self.sym2idx["<eos>"]
         self.bos_idx = self.sym2idx["<bos>"]
 
+    def _build_from_tokenizer(self):
+        data = self.tokenizer.get_vocab()
+        self.sym2idx = data
+        self.idx2sym = {value:key for key, value in data.items()}
+
     def build_vocab(self):
-        if self.vocab_file:
+        if self.vocab_file and self.tokenizer is None:
             print("building vocab from {}".format(self.vocab_file))
             self._build_from_file(self.vocab_file)
+            print("final vocab size {}".format(len(self)))
+            print("symbols: {}".format(list(self.sym2idx.keys())))
+        elif self.tokenizer:
+            print("building vocab from tokenizer")
+            self._build_from_tokenizer()
             print("final vocab size {}".format(len(self)))
             print("symbols: {}".format(list(self.sym2idx.keys())))
         else:
@@ -120,7 +137,13 @@ class Vocab(object):
             )
 
     def encode_file(
-        self, path, ordered=False, verbose=True, add_eos=True, add_double_eos=False
+        self,
+        path,
+        ordered=False,
+        verbose=True,
+        add_eos=True,
+        add_bos_and_eos=False,
+        add_double_eos=False,
     ):
         if verbose:
             print("encoding file {} ...".format(path))
@@ -131,9 +154,39 @@ class Vocab(object):
                 if verbose and idx > 0 and idx % 500000 == 0:
                     print("    line {}".format(idx))
                 symbols = self.tokenize(
-                    line, add_eos=add_eos, add_double_eos=add_double_eos
+                    line,
+                    add_eos=add_eos,
+                    add_bos_and_eos=add_bos_and_eos,
+                    add_double_eos=add_double_eos,
                 )
                 encoded.append(self.convert_to_tensor(symbols))
+
+        if ordered:
+            encoded = torch.cat(encoded)
+
+        return encoded
+
+    def encode_zst(
+        self,
+        path,
+        ordered=False,
+        verbose=True,
+    ):
+        if verbose:
+            print("encoding file {} ...".format(path))
+        assert os.path.exists(path)
+        encoded = []
+
+        reader = Reader()
+        idx = 0
+        for document in reader.read_jsonl(path):
+            if verbose and idx % 50000 == 0:
+                print("    line {}".format(idx))
+            symbols = self.tokenizer.encode(
+                    document,
+                ).tokens
+            encoded.append(self.convert_to_tensor(symbols))
+            idx += 1
 
         if ordered:
             encoded = torch.cat(encoded)
@@ -197,3 +250,58 @@ class Vocab(object):
 
     def __len__(self):
         return len(self.idx2sym)
+
+
+def json_serial(obj):
+    """JSON serializer for objects not serializable by default json code"""
+
+    if isinstance(obj, (datetime.datetime,)):
+        return obj.isoformat()
+    raise TypeError("Type %s not serializable" % type(obj))
+
+
+class Archive:
+    def __init__(self, file_path, compression_level=3):
+        self.file_path = file_path
+        dir_name = os.path.dirname(file_path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+        self.fh = open(self.file_path, 'wb')
+        self.cctx = zstandard.ZstdCompressor(level=compression_level)
+        self.compressor = self.cctx.stream_writer(self.fh)
+
+    def add_data(self, data, meta={}):
+        self.compressor.write(json.dumps({'text': data, 'meta': meta}, default=json_serial).encode('UTF-8') + b'\n')
+
+    def commit(self):
+        self.compressor.flush(zstandard.FLUSH_FRAME)
+        self.fh.flush()
+        self.fh.close()
+
+
+class Reader:
+    def __init__(self):
+        pass
+
+    def read_jsonl(self, file, get_meta=False, autojoin_paragraphs=True, para_joiner='\n\n'):
+        with open(file, 'rb') as fh:
+            self.fh = fh
+            cctx = zstandard.ZstdDecompressor()
+            reader = io.BufferedReader(cctx.stream_reader(fh))
+            rdr = jsonlines.Reader(reader)
+            for ob in rdr:
+                # naive jsonl where each object is just the string itself, with no meta. For legacy compatibility.
+                if isinstance(ob, str):
+                    assert not get_meta
+                    yield ob
+                    continue
+
+                text = ob['text']
+
+                if autojoin_paragraphs and isinstance(text, list):
+                    text = para_joiner.join(text)
+
+                if get_meta:
+                    yield text, (ob['meta'] if 'meta' in ob else {})
+                else:
+                    yield text

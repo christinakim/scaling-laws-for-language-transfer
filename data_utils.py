@@ -1,25 +1,52 @@
 import glob
 import os
+from pathlib import Path
 
+import itertools
 import numpy as np
 import torch
+from tokenizers import ByteLevelBPETokenizer
+from torch.utils.data.dataloader import DataLoader
+from torch.utils.data.dataset import Dataset, IterableDataset
 
 from utils.vocabulary import Vocab
 
 
-class LMOrderedIterator(object):
-    def __init__(self, data, bsz, bptt, device="cpu", ext_len=None):
+class WebTextDataset(Dataset):
+    def __init__(
+        self, dataset_path, seq_len, vocab,
+    ):
+        self.vocab = vocab
+        self.data = list(itertools.chain.from_iterable(self.vocab.encode_zst(dataset_path)))
+        self.seq_len = seq_len
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, i):
+        end_idx = i + self.seq_len
+        beg_idx = i
+
+        data = self.data[beg_idx:end_idx]
+        target = self.data[i + 1 : i + 1 + self.seq_len]
+        print(data)
+
+        return data, target, self.seq_len
+
+class LMOrderedIterator(IterableDataset):
+    def __init__(self, data, length, bsz, bptt=None, device="cpu"):
         """
             data -- LongTensor -- the LongTensor is strictly ordered
         """
         self.bsz = bsz
+        self.len = length
         self.bptt = bptt
-        self.ext_len = ext_len if ext_len is not None else 0
 
         self.device = device
 
         # Work out how cleanly we can divide the dataset into bsz parts.
         self.n_step = data.size(0) // bsz
+        self.data = data
 
         # Trim off any extra elements that wouldn't cleanly fit (remainders).
         data = data.narrow(0, 0, self.n_step * bsz)
@@ -30,13 +57,16 @@ class LMOrderedIterator(object):
         # Number of mini-batches
         self.n_batch = (self.n_step + self.bptt - 1) // self.bptt
 
+    def __len__(self):
+        return self.len
+
     def get_batch(self, i, bptt=None):
         if bptt is None:
             bptt = self.bptt
         seq_len = min(bptt, self.data.size(0) - 1 - i)
 
         end_idx = i + seq_len
-        beg_idx = max(0, i - self.ext_len)
+        beg_idx = i
 
         data = self.data[beg_idx:end_idx]
         target = self.data[i + 1 : i + 1 + seq_len]
@@ -45,26 +75,14 @@ class LMOrderedIterator(object):
 
     def get_fixlen_iter(self, start=0):
         for i in range(start, self.data.size(0) - 1, self.bptt):
-            yield self.get_batch(i)
-
-    def get_varlen_iter(self, start=0, std=5, min_len=5, max_deviation=3):
-        max_len = self.bptt + max_deviation * std
-        i = start
-        while True:
-            bptt = self.bptt if np.random.random() < 0.95 else self.bptt / 2.0
-            bptt = min(max_len, max(min_len, int(np.random.normal(bptt, std))))
-            data, target, seq_len = self.get_batch(i, bptt)
-            i += seq_len
-            yield data, target, seq_len
-            if i >= self.data.size(0) - 2:
-                break
+            yield self.get_batch(start)
 
     def __iter__(self):
         return self.get_fixlen_iter()
 
 
-class LMShuffledIterator(object):
-    def __init__(self, data, bsz, bptt, device="cpu", ext_len=None, shuffle=False):
+class LMShuffledIterator(IterableDataset):
+    def __init__(self, data, bsz, bptt, device="cpu", shuffle=False):
         """
             data -- list[LongTensor] -- there is no order among the LongTensors
         """
@@ -72,7 +90,6 @@ class LMShuffledIterator(object):
 
         self.bsz = bsz
         self.bptt = bptt
-        self.ext_len = ext_len if ext_len is not None else 0
 
         self.device = device
         self.shuffle = shuffle
@@ -97,7 +114,6 @@ class LMShuffledIterator(object):
         target = torch.LongTensor(self.bptt, self.bsz)
 
         n_retain = 0
-
         while True:
             # data   : [n_retain+bptt x bsz]
             # target : [bptt x bsz]
@@ -135,7 +151,7 @@ class LMShuffledIterator(object):
 
             yield data, target, self.bptt
 
-            n_retain = min(data.size(0), self.ext_len)
+            n_retain = 0
             if n_retain > 0:
                 data[:n_retain] = data[-n_retain:]
             data.resize_(n_retain + self.bptt, data.size(1))
@@ -150,20 +166,13 @@ class LMShuffledIterator(object):
 
 class LMMultiFileIterator(LMShuffledIterator):
     def __init__(
-        self, paths, vocab, bsz, bptt, device="cpu", ext_len=None, shuffle=False
+        self, paths, vocab, bsz, bptt, *args, **kwargs,
     ):
-
+        super().__init__(paths, bsz, bptt, *args, **kwargs)
         self.paths = paths
         self.vocab = vocab
 
-        self.bsz = bsz
-        self.bptt = bptt
-        self.ext_len = ext_len if ext_len is not None else 0
-
-        self.device = device
-        self.shuffle = shuffle
-
-    def get_sent_stream(self, path):
+    def get_sent_stream_from_path(self, path):
         sents = self.vocab.encode_file(path, add_double_eos=True)
         if self.shuffle:
             np.random.shuffle(sents)
@@ -177,9 +186,27 @@ class LMMultiFileIterator(LMShuffledIterator):
 
         for path in self.paths:
             # sent_stream is an iterator
-            sent_stream = self.get_sent_stream(path)
+            sent_stream = self.get_sent_stream_from_path(path)
             for batch in self.stream_iterator(sent_stream):
                 yield batch
+
+
+class WebTextFileIterator(LMMultiFileIterator):
+    def __init__(
+        self, data, vocab, rank, world_size, bsz, bptt, *args, **kwargs,
+    ):
+        data = [path for i, path in enumerate(data) if i % world_size == rank]
+        print("rank {} has files {}".format(rank, data))
+        super().__init__(data, vocab, bsz, bptt, *args, **kwargs)
+
+    def get_sent_stream_from_path(self, path):
+
+        sents = self.vocab.encode_zst(path)
+        if self.shuffle:
+            np.random.shuffle(sents)
+        sent_stream = iter(sents)
+
+        return sent_stream
 
 
 class Corpus(object):
@@ -212,6 +239,11 @@ class Corpus(object):
             self.vocab.count_file(os.path.join(path, "0_shard_shuff.txt"))
             self.vocab.count_file(os.path.join(path, "1_shard_shuff.txt"))
             self.vocab.count_file(os.path.join(path, "2_shard_shuff.txt"))
+        elif self.dataset == "openwebtext2":
+            all_paths = [str(x) for x in Path(path).glob("**/*.zst")]
+            train_paths = [path for idx, path in enumerate(all_paths) if idx % 10 in (0,2, 4, 6, 8,)]
+            valid_paths = [path for idx, path in enumerate(all_paths) if idx % 10 in (1, 9 )]
+            test_paths = [path for idx, path in enumerate(all_paths) if idx % 10 in (3, 7 )]
 
         self.vocab.build_vocab()
 
@@ -259,8 +291,12 @@ class Corpus(object):
                 ordered=True,
                 add_bos_and_eos=True,
             )
+        elif "openwebtext2":
+            self.train = train_paths
+            self.valid = valid_paths
+            self.test = test_paths
 
-    def get_iterator(self, split, *args, **kwargs):
+    def get_iterator(self, rank, world_size, split,  batch_size, n_ctx, *args, **kwargs):
         if split == "train":
             if self.dataset in [
                 "ptb",
@@ -269,12 +305,16 @@ class Corpus(object):
                 "enwik8",
                 "text8",
             ]:
-                data_iter = LMOrderedIterator(self.train, *args, **kwargs)
+                data_iter = LMOrderedIterator(
+                    self.train, len(self.train), batch_size, *args, **kwargs
+                )
             elif self.dataset == "lm1b":
                 kwargs["shuffle"] = True
                 data_iter = LMMultiFileIterator(self.train, self.vocab, *args, **kwargs)
             elif "states" in self.dataset:
-                data_iter = LMOrderedIterator(self.train, *args, **kwargs)
+                data_iter = LMOrderedIterator(self.train, len(self.train), batch_size, n_ctx, *args, **kwargs)
+            elif self.dataset == "openwebtext2":
+                data_iter = WebTextDataset(self.train[0], n_ctx, self.vocab, *args, **kwargs)
 
         elif split in ["valid", "test"]:
             data = self.valid if split == "valid" else self.test
@@ -283,11 +323,15 @@ class Corpus(object):
                 in ["ptb", "wikitext-2", "wikitext-103", "enwik8", "text8",]
                 or "states" in self.dataset
             ):
-                data_iter = LMOrderedIterator(data, *args, **kwargs)
+                data_iter = LMOrderedIterator(
+                    data, len(data), batch_size, n_ctx, *args, **kwargs
+                )
             elif self.dataset == "lm1b":
                 data_iter = LMShuffledIterator(data, *args, **kwargs)
-
-        return data_iter
+            elif self.dataset == "openwebtext2":
+                data_iter = WebTextFileIterator(data, self.vocab, rank, world_size, batch_size, n_ctx, *args, **kwargs)
+        dataloader = DataLoader(data_iter, batch_size=None, shuffle=False)
+        return dataloader
 
 
 def get_lm_corpus(datadir, dataset):
@@ -302,7 +346,7 @@ def get_lm_corpus(datadir, dataset):
             kwargs["special"] = ["<eos>"]
             kwargs["lower_case"] = False
         elif dataset == "ptb":
-            kwargs["special"] = ["<unk>","<eos>"]
+            kwargs["special"] = ["<unk>", "<eos>"]
             kwargs["lower_case"] = True
         elif dataset == "lm1b":
             kwargs["special"] = []
@@ -313,10 +357,16 @@ def get_lm_corpus(datadir, dataset):
         elif dataset == "simple_wiki":
             kwargs["special"] = ["<eos>", "<bos>"]
             kwargs["delimiter"] = "\n"
-        else:
+        elif "states" in dataset:
             kwargs["special"] = ["<eos>", "<bos>"]
             kwargs["delimiter"] = ""
             kwargs["vocab_file"] = os.path.join(datadir, "vocab.txt")
+        elif dataset == "openwebtext2":
+            tokenizer = ByteLevelBPETokenizer().from_file(vocab_filename=datadir + '/gpt2-vocab.json',
+                                merges_filename=datadir + "/gpt2-merges.txt")
+
+            kwargs["tokenizer"] = tokenizer
+            kwargs["vocab_file"] = os.path.join(datadir, "gpt2-vocab.json")
 
         corpus = Corpus(datadir, dataset, **kwargs)
         # torch.save(corpus, fn)
@@ -331,14 +381,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--datadir",
         type=str,
-        default="../data/text8",
+        default="/datadrive/openwebtext2",
         help="location of the data corpus",
     )
     parser.add_argument(
         "--dataset",
         type=str,
-        default="text8",
-        choices=["ptb", "wikitext-2", "wikitext-103", "lm1b", "enwik8", "text8"],
+        default="openwebtext2",
+        choices=["ptb", "wikitext-2", "wikitext-103", "lm1b", "enwik8", "text8", "openwebtext2"],
         help="dataset name",
     )
     args = parser.parse_args()
