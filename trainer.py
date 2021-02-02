@@ -238,12 +238,14 @@ class Trainer:
                                 "lr": optimizer.param_groups[0]["lr"],
                             },
                         )
+
                 train_loss = 0
                 self.log_start_time = time.time()
-
             if self.train_step % self.args.eval_interval == 0:
-                val_loss, total_tokens = self.evaluate(model, self.val_iter, rank)
                 if rank == 0:
+
+                    val_loss, total_tokens = self.evaluate(model, self.val_iter, rank)
+
                     self.logger("-" * 100)
                     log_str = (
                         "| Eval {:3d} at step {:>8d} | time: {:5.2f}s "
@@ -272,36 +274,36 @@ class Trainer:
                     self.logger(log_str)
                     self.logger("-" * 100)
                 # Save the model if the validation loss is the best we've seen so far.
-                if not self.best_val_loss or val_loss < self.best_val_loss:
-                    if not self.args.debug and rank == 0:
-                        # only the main node gets to do i/o ops
-                        raw_model = model.module if hasattr(model, "module") else model
-                        self.logger("saving new model")
+                    if not self.best_val_loss or val_loss < self.best_val_loss:
+                        if not self.args.debug and rank == 0:
+                            # only the main node gets to do i/o ops
+                            raw_model = model.module if hasattr(model, "module") else model
+                            self.logger("saving new model")
 
-                        with open(
-                            os.path.join(self.args.work_dir, "model.pt"), "wb"
-                        ) as f:
+                            with open(
+                                os.path.join(self.args.work_dir, "model.pt"), "wb"
+                            ) as f:
 
-                            torch.save(raw_model, f)
-                        with open(
-                            os.path.join(self.args.work_dir, "optimizer.pt"), "wb"
-                        ) as f:
-                            torch.save(optimizer.state_dict(), f)
-                    self.best_val_loss = val_loss
-                    n_val_no_improve = 0
-                else:
-                    n_val_no_improve += 1
-                    self.logger(
-                        "validation loss hasn't improved in {} evals".format(
-                            n_val_no_improve
+                                torch.save(raw_model, f)
+                            with open(
+                                os.path.join(self.args.work_dir, "optimizer.pt"), "wb"
+                            ) as f:
+                                torch.save(optimizer.state_dict(), f)
+                        self.best_val_loss = val_loss
+                        n_val_no_improve = 0
+                    else:
+                        n_val_no_improve += 1
+                        self.logger(
+                            "validation loss hasn't improved in {} evals".format(
+                                n_val_no_improve
+                            )
                         )
-                    )
 
-                self.eval_start_time = time.time()
+                    self.eval_start_time = time.time()
 
-                if n_val_no_improve == self.args.n_val_stop:
-                    self.logger("early stopping due to val loss not decreasing")
-                    self.early_stop = False
+                    if n_val_no_improve == self.args.n_val_stop:
+                        self.logger("early stopping due to val loss not decreasing")
+                        self.early_stop = False
 
             if (
                 "states" in self.args.dataset

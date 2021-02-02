@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from tokenizers import ByteLevelBPETokenizer
 from torch.utils.data.dataloader import DataLoader
-from torch.utils.data.dataset import Dataset, IterableDataset
+from torch.utils.data.dataset import ConcatDataset, Dataset, IterableDataset
 
 from utils.vocabulary import Vocab
 
@@ -80,134 +80,6 @@ class LMOrderedIterator(IterableDataset):
 
     def __iter__(self):
         return self.get_fixlen_iter()
-
-
-class LMShuffledIterator(IterableDataset):
-    def __init__(self, data, bsz, bptt, device="cpu", shuffle=False):
-        """
-            data -- list[LongTensor] -- there is no order among the LongTensors
-        """
-        self.data = data
-
-        self.bsz = bsz
-        self.bptt = bptt
-
-        self.device = device
-        self.shuffle = shuffle
-
-    def get_sent_stream(self):
-        # index iterator
-        epoch_indices = (
-            np.random.permutation(len(self.data))
-            if self.shuffle
-            else np.array(range(len(self.data)))
-        )
-
-        # sentence iterator
-        for idx in epoch_indices:
-            yield self.data[idx]
-
-    def stream_iterator(self, sent_stream):
-        # streams for each data in the batch
-        streams = [None] * self.bsz
-
-        data = torch.LongTensor(self.bptt, self.bsz)
-        target = torch.LongTensor(self.bptt, self.bsz)
-
-        n_retain = 0
-        while True:
-            # data   : [n_retain+bptt x bsz]
-            # target : [bptt x bsz]
-            data[n_retain:].fill_(-1)
-            target.fill_(-1)
-
-            valid_batch = True
-
-            for i in range(self.bsz):
-                n_filled = 0
-                try:
-                    while n_filled < self.bptt:
-                        if streams[i] is None or len(streams[i]) <= 1:
-                            streams[i] = next(sent_stream)
-                        # number of new tokens to fill in
-                        n_new = min(len(streams[i]) - 1, self.bptt - n_filled)
-                        # first n_retain tokens are retained from last batch
-                        data[
-                            n_retain + n_filled : n_retain + n_filled + n_new, i
-                        ] = streams[i][:n_new]
-                        target[n_filled : n_filled + n_new, i] = streams[i][
-                            1 : n_new + 1
-                        ]
-                        streams[i] = streams[i][n_new:]
-                        n_filled += n_new
-                except StopIteration:
-                    valid_batch = False
-                    break
-
-            if not valid_batch:
-                return
-
-            data = data.to(self.device)
-            target = target.to(self.device)
-
-            yield data, target, self.bptt
-
-            n_retain = 0
-            if n_retain > 0:
-                data[:n_retain] = data[-n_retain:]
-            data.resize_(n_retain + self.bptt, data.size(1))
-
-    def __iter__(self):
-        # sent_stream is an iterator
-        sent_stream = self.get_sent_stream()
-
-        for batch in self.stream_iterator(sent_stream):
-            yield batch
-
-
-class LMMultiFileIterator(LMShuffledIterator):
-    def __init__(
-        self, paths, vocab, bsz, bptt, *args, **kwargs,
-    ):
-        super().__init__(paths, bsz, bptt, *args, **kwargs)
-        self.paths = paths
-        self.vocab = vocab
-
-    def get_sent_stream_from_path(self, path):
-        sents = self.vocab.encode_file(path, add_double_eos=True)
-        if self.shuffle:
-            np.random.shuffle(sents)
-        sent_stream = iter(sents)
-
-        return sent_stream
-
-    def __iter__(self):
-        if self.shuffle:
-            np.random.shuffle(self.paths)
-
-        for path in self.paths:
-            # sent_stream is an iterator
-            sent_stream = self.get_sent_stream_from_path(path)
-            for batch in self.stream_iterator(sent_stream):
-                yield batch
-
-
-class WebTextFileIterator(LMMultiFileIterator):
-    def __init__(
-        self, data, vocab, rank, world_size, bsz, bptt, *args, **kwargs,
-    ):
-        data = [path for i, path in enumerate(data) if i % world_size == rank]
-        print("rank {} has files {}".format(rank, data))
-        super().__init__(data, vocab, bsz, bptt, *args, **kwargs)
-
-    def get_sent_stream_from_path(self, path):
-
-        sents = self.vocab.encode_zst(path)
-        if self.shuffle:
-            np.random.shuffle(sents)
-        sent_stream = iter(sents)
-
-        return sent_stream
 
 
 class Corpus(object):
@@ -295,7 +167,12 @@ class Corpus(object):
             elif "states" in self.dataset:
                 data_iter = LMOrderedIterator(self.train, len(self.train), batch_size, n_ctx, *args, **kwargs)
             elif self.dataset == "openwebtext2":
-                data_iter = WebTextDataset(self.train[0], n_ctx, self.vocab, *args, **kwargs)
+                n_partition = [n for i, n in enumerate(self.train[:12]) if i % world_size == rank]
+                print("{}_{}".format(rank, len(n_partition)))
+
+                data_iter = ConcatDataset([WebTextDataset(data, n_ctx, self.vocab, *args, **kwargs) for data in n_partition])
+                dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False, drop_last=True)
+                return dataloader
 
         elif split in ["valid", "test"]:
             data = self.valid if split == "valid" else self.test
@@ -308,8 +185,12 @@ class Corpus(object):
                     data, len(data), batch_size, n_ctx, *args, **kwargs
                 )
             elif self.dataset == "openwebtext2":
-                data_iter = WebTextDataset(data[0], n_ctx, self.vocab, *args, **kwargs)
-        dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False, drop_last=True)
+                data_iter = ConcatDataset([WebTextDataset(data[i], n_ctx, self.vocab, *args, **kwargs) for i in range(len(data[:4]))])
+                dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False, drop_last=True)
+
+                return dataloader
+        
+        dataloader = DataLoader(data_iter, batch_size=None, shuffle=False,)
         return dataloader
 
 

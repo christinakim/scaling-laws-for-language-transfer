@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 import torch
+import torch.distributed as dist
 import torch.multiprocessing as mp
 import wandb
 
@@ -118,6 +119,7 @@ def main(args):
         mp.spawn(trainer.train, args=(world_size,), nprocs=world_size, join=True)
 
     except KeyboardInterrupt:
+        dist.destroy_process_group()
         logger("-" * 100)
         logger("Exiting from training early")
 

@@ -173,7 +173,7 @@ class Vocab(object):
         verbose=True,
     ):
         if verbose:
-            print("encoding file {} ...".format(path))
+            print("encoding json {} ...".format(path))
         assert os.path.exists(path)
         encoded = []
 
