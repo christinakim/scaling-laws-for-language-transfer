@@ -24,7 +24,6 @@ if [[ $1 == 'train' ]]; then
         --eval_interval 10\
         --n_nodes 1 \
         --n_gpus 1 \
-        --wandb \
         --max_epoch 100
     
 elif [[ $1 == 'eval' ]]; then

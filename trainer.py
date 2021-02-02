@@ -9,7 +9,7 @@ import torch.optim as optim
 from torch.nn.parallel.distributed import DistributedDataParallel
 
 from utils.sample import sample_words
-
+import wandb
 
 # coding: utf-8
 
@@ -98,6 +98,7 @@ class Trainer:
                     break
                 data = data.to(rank)
                 target = target.to(rank)
+                seq_len = seq_len.to(rank)
                 logits, loss = model(data, target)
                 loss = loss.mean()
                 total_loss += seq_len * loss.float()
@@ -130,6 +131,14 @@ class Trainer:
     def train(self, rank, world_size):
         self.init_process(rank, world_size)
         self.logger(f"{rank + 1}/{world_size} process initialized.\n")
+        if rank == 0 and self.args.wandb:
+            if "states" in self.args.dataset:
+                wandb.init(project="regular-language-scaling-laws", entity=self.args.entity)
+            else:
+                wandb.init(project="natural-language-scaling-laws", entity=self.args.entity)
+            wandb.run.name = "{}_{}".format(self.args.dataset, self.args.model_size)
+            wandb.config.update(self.args)
+
 
 
         self.logger(
@@ -152,7 +161,7 @@ class Trainer:
         model.train()
         for epoch in itertools.count(start=1):
             self.train_epoch(
-                rank, epoch, model, optimizer, scheduler,
+                rank, epoch, model, optimizer, scheduler, wandb,
             )
             if (
                 (self.args.max_epoch and self.args.max_epoch == epoch)
@@ -165,7 +174,7 @@ class Trainer:
         self.cleanup()
 
     def train_epoch(
-        self, rank, epoch, model, optimizer, scheduler,
+        self, rank, epoch, model, optimizer, scheduler, wandb,
     ):
         train_loss = 0
         n_val_no_improve = 0
@@ -219,7 +228,7 @@ class Trainer:
                     log_str += " | ppl {:9.3f}".format(math.exp(cur_loss))
                     self.logger(log_str)
                     if self.args.wandb:
-                        self.wandb.log(
+                        wandb.log(
                             {
                                 "epoch": epoch,
                                 "ppl": math.exp(cur_loss),
@@ -249,7 +258,7 @@ class Trainer:
                     log_str += " | valid ppl {:9.3f}".format(math.exp(val_loss))
 
                     if self.args.wandb:
-                        self.wandb.log(
+                        wandb.log(
                             {
                                 "epoch": epoch,
                                 "val_loss": val_loss,
@@ -292,7 +301,7 @@ class Trainer:
 
                 if n_val_no_improve == self.args.n_val_stop:
                     self.logger("early stopping due to val loss not decreasing")
-                    self.early_stop = True
+                    self.early_stop = False
 
             if (
                 "states" in self.args.dataset
@@ -317,11 +326,11 @@ class Trainer:
                 self.logger("-" * 100)
 
                 if self.args.wandb:
-                    self.wandb.log({"sample_accuracy": len(good_samples)})
+                    wandb.log({"sample_accuracy": len(good_samples)})
 
             if self.train_step == self.args.max_step or self.early_stop:
                 if self.early_stop and self.args.wandb:
-                    self.wandb.run.summary["early_stop"] = self.train_step
+                    wandb.run.summary["early_stop"] = self.train_step
                 break
         if self.early_stop:
             self.logger("-" * 100)

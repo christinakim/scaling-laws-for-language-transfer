@@ -31,18 +31,12 @@ def main(args):
         args.d_ff = config.d_ff
         args.d_attn = config.d_attn
 
-    if args.wandb:
-        if "states" in args.dataset:
-            wandb.init(project="regular-language-scaling-laws", entity=args.entity)
-        else:
-            wandb.init(project="natural-language-scaling-laws", entity=args.entity)
-        wandb.run.name = "{}_{}".format(args.dataset, args.model_size)
+
 
     if args.d_embd < 0:
         args.d_embd = args.d_model
 
     assert args.batch_size % args.batch_chunk == 0
-
     args.work_dir = "{}-{}".format(args.work_dir, args.dataset)
     args.work_dir = os.path.join(args.work_dir, time.strftime("%Y%m%d-%H%M%S"))
     logger = create_exp_dir(
@@ -64,7 +58,9 @@ def main(args):
     device = torch.device("cuda" if args.cuda else "cpu")
 
     world_size = args.n_gpus
-    args.lr = args.lr * world_size
+    args.lr = args.lr 
+    args.batch_size = args.batch_size // world_size
+
     ###############################################################################
     # Load data
     ###############################################################################
@@ -112,12 +108,11 @@ def main(args):
     ###############################################################################
     # Training code
     ###############################################################################
-    if args.wandb:
-        wandb.config.update(args)
+
 
     # At any point you can hit Ctrl + C to break out of training early.
     trainer = Trainer(
-        model=model, logger=logger, corpus=corpus, args=args, device=device,
+        model=model, logger=logger, corpus=corpus, args=args, device=device, 
     )
     try:
         mp.spawn(trainer.train, args=(world_size,), nprocs=world_size, join=True)

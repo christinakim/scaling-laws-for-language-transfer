@@ -27,10 +27,8 @@ class WebTextDataset(Dataset):
         end_idx = i + self.seq_len
         beg_idx = i
 
-        data = self.data[beg_idx:end_idx]
-        target = self.data[i + 1 : i + 1 + self.seq_len]
-        print(data)
-
+        data =  torch.LongTensor(self.data[beg_idx:end_idx])
+        target =  torch.LongTensor(self.data[i + 1 : i + 1 + self.seq_len])
         return data, target, self.seq_len
 
 class LMOrderedIterator(IterableDataset):
@@ -329,8 +327,8 @@ class Corpus(object):
             elif self.dataset == "lm1b":
                 data_iter = LMShuffledIterator(data, *args, **kwargs)
             elif self.dataset == "openwebtext2":
-                data_iter = WebTextFileIterator(data, self.vocab, rank, world_size, batch_size, n_ctx, *args, **kwargs)
-        dataloader = DataLoader(data_iter, batch_size=None, shuffle=False)
+                data_iter = WebTextDataset(data[0], n_ctx, self.vocab, *args, **kwargs)
+        dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False)
         return dataloader
 
 
