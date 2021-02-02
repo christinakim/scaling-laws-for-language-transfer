@@ -38,7 +38,8 @@ class LMOrderedIterator(IterableDataset):
         """
         self.bsz = bsz
         self.len = length
-        self.bptt = bptt
+        self.bptt = bptt if bptt else bsz
+
 
         self.device = device
 
@@ -53,7 +54,7 @@ class LMOrderedIterator(IterableDataset):
         self.data = data.view(bsz, -1).t().contiguous().to(device)
 
         # Number of mini-batches
-        self.n_batch = (self.n_step + self.bptt - 1) // self.bptt
+        #self.n_batch = (self.n_step + self.bptt - 1) // self.bptt
 
     def __len__(self):
         return self.len
@@ -61,13 +62,15 @@ class LMOrderedIterator(IterableDataset):
     def get_batch(self, i, bptt=None):
         if bptt is None:
             bptt = self.bptt
-        seq_len = min(bptt, self.data.size(0) - 1 - i)
+        seq_len = self.data.size(0) - 1 - i
 
         end_idx = i + seq_len
         beg_idx = i
 
-        data = self.data[beg_idx:end_idx]
-        target = self.data[i + 1 : i + 1 + seq_len]
+        data = torch.LongTensor(self.data[beg_idx:end_idx])
+        target =  torch.LongTensor(self.data[i + 1 : i + 1 + seq_len])
+
+        print(data)
 
         return data, target, seq_len
 
@@ -218,15 +221,6 @@ class Corpus(object):
             self.vocab.count_file(os.path.join(path, "test.txt"))
         elif self.dataset == "wikitext-103":
             self.vocab.count_file(os.path.join(path, "train.txt"))
-        elif self.dataset == "lm1b":
-            train_path_pattern = os.path.join(
-                path,
-                "1-billion-word-language-modeling-benchmark-r13output",
-                "training-monolingual.tokenized.shuffled",
-                "news.en-*",
-            )
-            train_paths = glob.glob(train_path_pattern)
-            # the vocab will load from file when build_vocab() is called
         elif "states" in self.dataset:
             info_file = os.path.join(path, "info.txt")
             with open(info_file) as f:
@@ -265,14 +259,6 @@ class Corpus(object):
             self.test = self.vocab.encode_file(
                 os.path.join(path, "test.txt"), ordered=True, add_eos=False
             )
-        elif self.dataset == "lm1b":
-            self.train = train_paths
-            self.valid = self.vocab.encode_file(
-                os.path.join(path, "valid.txt"), ordered=False, add_double_eos=True
-            )
-            self.test = self.vocab.encode_file(
-                os.path.join(path, "test.txt"), ordered=False, add_double_eos=True
-            )
         elif "states" in self.dataset:
             self.train = self.vocab.encode_file(
                 os.path.join(path, "0_shard_shuff.txt"),
@@ -306,9 +292,6 @@ class Corpus(object):
                 data_iter = LMOrderedIterator(
                     self.train, len(self.train), batch_size, *args, **kwargs
                 )
-            elif self.dataset == "lm1b":
-                kwargs["shuffle"] = True
-                data_iter = LMMultiFileIterator(self.train, self.vocab, *args, **kwargs)
             elif "states" in self.dataset:
                 data_iter = LMOrderedIterator(self.train, len(self.train), batch_size, n_ctx, *args, **kwargs)
             elif self.dataset == "openwebtext2":
@@ -324,11 +307,9 @@ class Corpus(object):
                 data_iter = LMOrderedIterator(
                     data, len(data), batch_size, n_ctx, *args, **kwargs
                 )
-            elif self.dataset == "lm1b":
-                data_iter = LMShuffledIterator(data, *args, **kwargs)
             elif self.dataset == "openwebtext2":
                 data_iter = WebTextDataset(data[0], n_ctx, self.vocab, *args, **kwargs)
-        dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False)
+        dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False, drop_last=True)
         return dataloader
 
 

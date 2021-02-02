@@ -247,6 +247,7 @@ class GPT(nn.Module):
         return optimizer
 
     def forward(self, idx, targets=None):
+
         b, t = idx.size()
         assert t <= self.block_size, "Cannot forward, model block size is exhausted."
 

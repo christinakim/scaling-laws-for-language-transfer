@@ -8,7 +8,7 @@ if [[ $1 == 'train' ]]; then
         --dataset $2 \
         --model_size $3 \
         --n_positions 500 \
-        --n_ctx 5 \
+        --n_ctx 128 \
         --n_layer 2 \
         --d_model 64 \
         --n_head 2 \
