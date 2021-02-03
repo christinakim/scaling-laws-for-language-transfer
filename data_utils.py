@@ -167,7 +167,7 @@ class Corpus(object):
             elif "states" in self.dataset:
                 data_iter = LMOrderedIterator(self.train, len(self.train), batch_size, n_ctx, *args, **kwargs)
             elif self.dataset == "openwebtext2":
-                n_partition = [n for i, n in enumerate(self.train[:12]) if i % world_size == rank]
+                n_partition = [n for i, n in enumerate(self.train[:8]) if i % world_size == rank]
                 print("{}_{}".format(rank, len(n_partition)))
 
                 data_iter = ConcatDataset([WebTextDataset(data, n_ctx, self.vocab, *args, **kwargs) for data in n_partition])
@@ -185,7 +185,7 @@ class Corpus(object):
                     data, len(data), batch_size, n_ctx, *args, **kwargs
                 )
             elif self.dataset == "openwebtext2":
-                data_iter = ConcatDataset([WebTextDataset(data[i], n_ctx, self.vocab, *args, **kwargs) for i in range(len(data[:4]))])
+                data_iter = ConcatDataset([WebTextDataset(data[i], n_ctx, self.vocab, *args, **kwargs) for i in range(len(data[:2]))])
                 dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False, drop_last=True)
 
                 return dataloader
