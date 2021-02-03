@@ -4,7 +4,6 @@ if [[ $1 == 'train' ]]; then
     echo 'Run training...'
     python train_2.py \
         --cuda \
-        --data /Users/christina/openai-scholars/$2 \
         --dataset $2 \
         --model_size $3 \
         --n_positions 500 \
@@ -19,13 +18,12 @@ if [[ $1 == 'train' ]]; then
         --optim adam \
         --warmup_step 0 \
         --max_step 50000 \
-        --batch_size 32 \
+        --batch_size 4 \
         --gpu0_bsz 1 \
-        --eval_interval 10\
+        --eval_interval 100\
         --n_nodes 1 \
-        --n_gpus 1 \
-        --debug \
-        --max_epoch 10
+        --n_gpus 4  \
+        --max_epoch 100
 
 elif [[ $1 == 'eval' ]]; then
     echo 'Run evaluation...'

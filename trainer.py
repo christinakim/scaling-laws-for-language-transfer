@@ -2,16 +2,199 @@ import itertools
 import math
 import os
 import time
+
+import pytorch_lightning as pl
 import datetime
 import torch
 import torch.distributed as dist
 import torch.optim as optim
+import wandb
+from pytorch_lightning.loggers import WandbLogger
 from torch.nn.parallel.distributed import DistributedDataParallel
 
+from data_utils import get_lm_corpus
+from datamodules import OpenWebText2DataModule
+from datamodules import OpenWebText2_V2_DataModule
+from datamodules import WikiText2DataModule
+from gpt import GPT
+from gpt import GPTConfig
 from utils.sample import sample_words
-import wandb
 
-# coding: utf-8
+
+def get_trainer(args):
+    if args.dataset == "wikitext2":
+        data_module = WikiText2DataModule(
+            sequence_length=args.n_ctx, batch_size=args.batch_size
+        )
+    elif args.dataset == "openwebtext2":
+        corpus = get_lm_corpus(args.data, args.dataset)
+
+        data_module = OpenWebText2_V2_DataModule(
+            data_dir=args.data, sequence_length=args.n_ctx, batch_size=args.batch_size, vocab=corpus.vocab,
+        )
+    else:
+        raise NotImplementedError
+
+    data_module.prepare_data()
+    data_module.setup("fit")
+    ntokens = len(data_module.vocab)
+    args.n_tokens = ntokens
+
+    configuration = GPTConfig(
+        vocab_size=args.n_tokens,
+        context_length=args.n_ctx,
+        n_embd=args.d_embd,
+        n_layer=args.n_layer,
+        n_head=args.n_head,
+        d_ff=args.d_ff,
+    )
+    model = GPT(configuration)
+
+    args.n_all_param = sum([p.nelement() for p in model.parameters()])
+    args.n_nonemb_param = sum(
+        [p.nelement() for p in model.parameters() if p.requires_grad]
+    )
+    gpt_pl = GPTLightning(model=model, args=args)
+
+    run_name = "{}_{}".format(args.dataset, args.model_size)
+    wandb_logger = WandbLogger(name=run_name, project=args.dataset, entity=args.entity,)
+    if args.n_gpus >= 1:
+        trainer = pl.Trainer(
+            val_check_interval=args.eval_interval,
+            weights_summary="full",
+            gpus=args.n_gpus,
+            logger=wandb_logger,
+            accelerator="ddp",
+            gradient_clip_val=args.clip,
+        )
+    else:
+        trainer = pl.Trainer(
+            val_check_interval=args.eval_interval,
+            weights_summary="full",
+            gpus=args.n_gpus,
+            logger=wandb_logger,
+            gradient_clip_val=args.clip,
+        )
+    trainer.fit(gpt_pl, datamodule=data_module)
+
+
+class GPTLightning(pl.LightningModule):
+    def __init__(self, model, args):
+        super().__init__()
+        self.args = args
+        self.model = model
+        self.save_hyperparameters(args)
+
+    def forward(self, x):
+        # in lightning, forward defines the prediction/inference actions
+        logits = self.model(x)
+        return logits
+
+    def training_step(self, batch, batch_idx):
+        # training_step defined the train loop. It is independent of forward
+        x, y, x_len = batch
+        logits, loss = self.model(x, y)
+        self.log_dict(
+            {
+                "loss": loss,
+                "ppl": math.exp(loss),
+                "bpc": (loss / math.log(2)),
+                "tokens": self.global_step * x_len,
+            },
+            sync_dist=True,
+            on_step=True,
+            on_epoch=True,
+        )
+        self.logger.experiment.log(
+            {
+                "loss": loss,
+                "ppl": math.exp(loss),
+                "bpc": (loss / math.log(2)),
+                "tokens": self.global_step * x_len,
+            },
+        )
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y, x_len = batch
+        logits, loss = self.model(x, y)
+        # Add sync_dist=True to sync logging across all GPU workers
+        self.log_dict(
+            {
+                "validation_loss": loss,
+                "validation_ppl": math.exp(loss),
+                "validation_bpc": (loss / math.log(2)),
+            },
+            on_step=True,
+            on_epoch=True,
+            sync_dist=True,
+        )
+        self.logger.experiment.log(
+            {
+                "validation_loss": loss,
+                "validation_ppl": math.exp(loss),
+                "validation_bpc": (loss / math.log(2)),
+            },
+        )
+
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        x, y, x_len = batch
+        logits, loss = self.model(x, y)
+        # Add sync_dist=True to sync logging across all GPU workers
+        self.log_dict(
+            {
+                "test_loss": loss,
+                "test_ppl": math.exp(loss),
+                "test_bpc": (loss / math.log(2)),
+            },
+            on_step=True,
+            on_epoch=True,
+            sync_dist=True,
+        )
+        self.logger.experiment.log(
+            {
+                "test_loss": loss,
+                "test_ppl": math.exp(loss),
+                "test_bpc": (loss / math.log(2)),
+            },
+        )
+        return loss
+
+    def configure_optimizers(self):
+        if self.args.optim.lower() == "adam":
+            optimizer = optim.Adam(self.parameters(), lr=self.args.lr)
+        else:
+            raise NotImplementedError
+
+        #### scheduler
+        if self.args.scheduler == "cosine":
+            # here we do not set eta_min to lr_min to be backward compatible
+            # because in previous versions eta_min is default to 0
+            # rather than the default value of lr_min 1e-6
+            scheduler = optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, self.args.max_step, eta_min=self.args.eta_min
+            )  # should use eta_min arg
+
+        elif self.args.scheduler == "inv_sqrt":
+            # originally used for Transformer (in Attention is all you need)
+            def lr_lambda(step):
+                # return a multiplier instead of a learning rate
+                if step == 0 and self.args.warmup_step == 0:
+                    return 1.0
+                else:
+                    return (
+                        1.0 / (step ** 0.5)
+                        if step > self.args.warmup_step
+                        else step / (self.args.warmup_step ** 1.5)
+                    )
+
+            scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+        else:
+            raise NotImplementedError
+
+        return [optimizer], [scheduler]
 
 
 class Trainer:
@@ -31,44 +214,44 @@ class Trainer:
         self.eval_start_time = time.time()
 
     def configure_optimizers(self, model, args):
-        if args.optim.lower() == "adam":
-            if args.sample_softmax > 0:
+        if self.args.optim.lower() == "adam":
+            if self.args.sample_softmax > 0:
                 dense_params, sparse_params = [], []
                 for param in model.parameters():
                     if param.size() == model.word_emb.weight.size():
                         sparse_params.append(param)
                     else:
                         dense_params.append(param)
-                optimizer = optim.Adam(dense_params, lr=args.lr)
+                optimizer = optim.Adam(dense_params, lr=self.args.lr)
             else:
-                optimizer = optim.Adam(model.parameters(), lr=args.lr)
+                optimizer = optim.Adam(model.parameters(), lr=self.args.lr)
         else:
             raise NotImplementedError
 
         #### scheduler
-        if args.scheduler == "cosine":
+        if self.args.scheduler == "cosine":
             # here we do not set eta_min to lr_min to be backward compatible
             # because in previous versions eta_min is default to 0
             # rather than the default value of lr_min 1e-6
             scheduler = optim.lr_scheduler.CosineAnnealingLR(
-                optimizer, args.max_step, eta_min=args.eta_min
+                optimizer, self.args.max_step, eta_min=self.args.eta_min
             )  # should use eta_min arg
 
-        elif args.scheduler == "inv_sqrt":
+        elif self.args.scheduler == "inv_sqrt":
             # originally used for Transformer (in Attention is all you need)
             def lr_lambda(step):
                 # return a multiplier instead of a learning rate
-                if step == 0 and args.warmup_step == 0:
+                if step == 0 and self.args.warmup_step == 0:
                     return 1.0
                 else:
                     return (
                         1.0 / (step ** 0.5)
-                        if step > args.warmup_step
-                        else step / (args.warmup_step ** 1.5)
+                        if step > self.args.warmup_step
+                        else step / (self.args.warmup_step ** 1.5)
                     )
 
             scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
-        elif args.scheduler == "constant":
+        elif self.args.scheduler == "constant":
             pass
 
         return optimizer, scheduler
@@ -145,6 +328,10 @@ class Trainer:
                 )
             wandb.run.name = "{}_{}".format(self.args.dataset, self.args.model_size)
             wandb.config.update(self.args)
+
+        self.logger(
+            f"Rank {rank}/{world_size} training process passed data download barrier.\n"
+        )
 
         model = self.model.to(rank)
 
