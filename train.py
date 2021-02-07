@@ -55,7 +55,6 @@ def main(args):
             )
         else:
             torch.cuda.manual_seed_all(args.seed)
-
     device = torch.device("cuda" if args.cuda else "cpu")
 
     world_size = args.n_gpus

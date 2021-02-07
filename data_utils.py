@@ -8,6 +8,7 @@ import torch
 from tokenizers import ByteLevelBPETokenizer
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import ConcatDataset, Dataset, IterableDataset
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 
 from utils.vocabulary import Vocab
 
@@ -17,17 +18,21 @@ class WebTextDataset(Dataset):
         self, dataset_path, seq_len, vocab,
     ):
         self.vocab = vocab
-        self.data = list(itertools.chain.from_iterable(self.vocab.encode_zst(dataset_path)))
+        data = list(itertools.chain.from_iterable(self.vocab.encode_zst(dataset_path)))[:1000]
+        stop = (len(data)//seq_len) * seq_len
+        self.data = data[:stop]
         self.seq_len = seq_len
 
     def __len__(self):
-        return len(self.data)
+        return len(self.data) - self.seq_len
 
     def __getitem__(self, i):
         end_idx = i + self.seq_len
         beg_idx = i
+        
+        data_pre_tensor= self.data[beg_idx:end_idx]
 
-        data =  torch.LongTensor(self.data[beg_idx:end_idx])
+        data =  torch.LongTensor(data_pre_tensor)
         target =  torch.LongTensor(self.data[i + 1 : i + 1 + self.seq_len])
         return data, target, self.seq_len
 
@@ -167,7 +172,7 @@ class Corpus(object):
             elif "states" in self.dataset:
                 data_iter = LMOrderedIterator(self.train, len(self.train), batch_size, n_ctx, *args, **kwargs)
             elif self.dataset == "openwebtext2":
-                n_partition = [n for i, n in enumerate(self.train[:12]) if i % world_size == rank]
+                n_partition = [n for i, n in enumerate(self.train[:1]) if i % world_size == rank]
                 print("{}_{}".format(rank, len(n_partition)))
 
                 data_iter = ConcatDataset([WebTextDataset(data, n_ctx, self.vocab, *args, **kwargs) for data in n_partition])
@@ -185,7 +190,7 @@ class Corpus(object):
                     data, len(data), batch_size, n_ctx, *args, **kwargs
                 )
             elif self.dataset == "openwebtext2":
-                data_iter = ConcatDataset([WebTextDataset(data[i], n_ctx, self.vocab, *args, **kwargs) for i in range(len(data[:4]))])
+                data_iter = ConcatDataset([WebTextDataset(data[i], n_ctx, self.vocab, *args, **kwargs) for i in range(len(data[:1]))])
                 dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False, drop_last=True)
 
                 return dataloader

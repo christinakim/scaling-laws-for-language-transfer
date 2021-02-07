@@ -2,7 +2,7 @@ import itertools
 import math
 import os
 import time
-
+import datetime
 import torch
 import torch.distributed as dist
 import torch.optim as optim
@@ -76,8 +76,8 @@ class Trainer:
     def init_process(self, rank, size, backend="gloo"):
         """ Initialize the distributed environment. """
         os.environ["MASTER_ADDR"] = "127.0.0.1"
-        os.environ["MASTER_PORT"] = "29500"
-        dist.init_process_group(backend, rank=rank, world_size=size)
+        os.environ["MASTER_PORT"] = "29501"
+        dist.init_process_group(backend, rank=rank, world_size=size, timeout=datetime.timedelta(0,seconds =  20))
 
     def cleanup(self):
         dist.destroy_process_group()
@@ -87,12 +87,13 @@ class Trainer:
 
     def evaluate(self, model, val_iter, rank):
         # Turn on evaluation mode which disables dropout.
-
+        print('HI')
         model.eval()
 
         # Evaluation
         total_len, total_loss = 0, 0.0
         with torch.no_grad():
+            print('YASSS')
             for i, (data, target, seq_len) in enumerate(val_iter):
                 if self.args.max_eval_steps > 0 and i >= self.args.max_eval_steps:
                     break
@@ -103,6 +104,7 @@ class Trainer:
                 loss = loss.mean()
                 total_loss += seq_len * loss.float()
                 total_len += seq_len
+                
 
         # Switch back to the training mode
         model.train()
@@ -245,6 +247,7 @@ class Trainer:
                 if rank == 0:
 
                     val_loss, total_tokens = self.evaluate(model, self.val_iter, rank)
+                    print(val_loss, total_tokens)
 
                     self.logger("-" * 100)
                     log_str = (
@@ -253,7 +256,7 @@ class Trainer:
                             self.train_step // self.args.eval_interval,
                             self.train_step,
                             (time.time() - self.eval_start_time),
-                            val_loss,
+                            val_loss.item(),
                         )
                     )
                     log_str += " | bpc {:9.5f}".format(val_loss / math.log(2))
