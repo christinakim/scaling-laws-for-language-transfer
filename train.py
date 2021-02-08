@@ -32,8 +32,6 @@ def main(args):
         args.d_ff = config.d_ff
         args.d_attn = config.d_attn
 
-
-
     if args.d_embd < 0:
         args.d_embd = args.d_model
 
@@ -58,7 +56,7 @@ def main(args):
     device = torch.device("cuda" if args.cuda else "cpu")
 
     world_size = args.n_gpus
-    args.lr = args.lr 
+    args.lr = args.lr
     args.batch_size = args.batch_size // world_size
 
     ###############################################################################
@@ -109,10 +107,9 @@ def main(args):
     # Training code
     ###############################################################################
 
-
     # At any point you can hit Ctrl + C to break out of training early.
     trainer = Trainer(
-        model=model, logger=logger, corpus=corpus, args=args, device=device, 
+        model=model, logger=logger, corpus=corpus, args=args, device=device,
     )
     try:
         mp.spawn(trainer.train, args=(world_size,), nprocs=world_size, join=True)

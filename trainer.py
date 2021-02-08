@@ -77,7 +77,12 @@ class Trainer:
         """ Initialize the distributed environment. """
         os.environ["MASTER_ADDR"] = "127.0.0.1"
         os.environ["MASTER_PORT"] = "29501"
-        dist.init_process_group(backend, rank=rank, world_size=size, timeout=datetime.timedelta(0,seconds =  20))
+        dist.init_process_group(
+            backend,
+            rank=rank,
+            world_size=size,
+            timeout=datetime.timedelta(0, seconds=20),
+        )
 
     def cleanup(self):
         dist.destroy_process_group()
@@ -131,13 +136,15 @@ class Trainer:
         self.logger(f"{rank + 1}/{world_size} process initialized.\n")
         if rank == 0 and self.args.wandb:
             if "states" in self.args.dataset:
-                wandb.init(project="regular-language-scaling-laws", entity=self.args.entity)
+                wandb.init(
+                    project="regular-language-scaling-laws", entity=self.args.entity
+                )
             else:
-                wandb.init(project="natural-language-scaling-laws", entity=self.args.entity)
+                wandb.init(
+                    project="natural-language-scaling-laws", entity=self.args.entity
+                )
             wandb.run.name = "{}_{}".format(self.args.dataset, self.args.model_size)
             wandb.config.update(self.args)
-
-
 
         self.logger(
             f"Rank {rank}/{world_size} training process passed data download barrier.\n"
@@ -176,7 +183,7 @@ class Trainer:
     ):
         train_loss = 0
         n_val_no_improve = 0
-        for batch, (data, target, seq_len) in enumerate(self.train_iter):
+        for batch_idx, (data, target, seq_len) in enumerate(self.train_iter):
             data = data.to(rank)
             target = target.to(rank)
             logits, loss = model(data, target)
@@ -215,7 +222,7 @@ class Trainer:
                         "| ms/batch {:5.2f} | loss {:5.2f}".format(
                             epoch,
                             self.train_step,
-                            batch + 1,
+                            batch_idx + 1,
                             optimizer.param_groups[0]["lr"],
                             elapsed * 1000 / self.args.log_interval,
                             cur_loss,
@@ -232,7 +239,7 @@ class Trainer:
                                 "ppl": math.exp(cur_loss),
                                 "loss": cur_loss,
                                 "bpc": cur_loss / math.log(2),
-                                "tokens": (batch + 1) * self.args.n_ctx,
+                                "tokens": (batch_idx + 1) * self.args.n_ctx,
                                 "lr": optimizer.param_groups[0]["lr"],
                             },
                         )
@@ -272,11 +279,13 @@ class Trainer:
                         )
                     self.logger(log_str)
                     self.logger("-" * 100)
-                # Save the model if the validation loss is the best we've seen so far.
+                    # Save the model if the validation loss is the best we've seen so far.
                     if not self.best_val_loss or val_loss < self.best_val_loss:
                         if not self.args.debug and rank == 0:
                             # only the main node gets to do i/o ops
-                            raw_model = model.module if hasattr(model, "module") else model
+                            raw_model = (
+                                model.module if hasattr(model, "module") else model
+                            )
                             self.logger("saving new model")
 
                             with open(

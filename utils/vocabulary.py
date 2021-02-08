@@ -101,7 +101,7 @@ class Vocab(object):
     def _build_from_tokenizer(self):
         data = self.tokenizer.get_vocab()
         self.sym2idx = data
-        self.idx2sym = {value:key for key, value in data.items()}
+        self.idx2sym = {value: key for key, value in data.items()}
 
     def build_vocab(self):
         if self.vocab_file and self.tokenizer is None:
@@ -167,10 +167,7 @@ class Vocab(object):
         return encoded
 
     def encode_zst(
-        self,
-        path,
-        ordered=False,
-        verbose=True,
+        self, path, ordered=False, verbose=True,
     ):
         if verbose:
             print("encoding json {} ...".format(path))
@@ -182,9 +179,7 @@ class Vocab(object):
         for document in reader.read_jsonl(path):
             if verbose and idx % 50000 == 0:
                 print("    line {}".format(idx))
-            symbols = self.tokenizer.encode(
-                    document,
-                ).tokens
+            symbols = self.tokenizer.encode(document,).tokens
             encoded.append(self.convert_to_tensor(symbols))
             idx += 1
 
@@ -266,12 +261,17 @@ class Archive:
         dir_name = os.path.dirname(file_path)
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
-        self.fh = open(self.file_path, 'wb')
+        self.fh = open(self.file_path, "wb")
         self.cctx = zstandard.ZstdCompressor(level=compression_level)
         self.compressor = self.cctx.stream_writer(self.fh)
 
     def add_data(self, data, meta={}):
-        self.compressor.write(json.dumps({'text': data, 'meta': meta}, default=json_serial).encode('UTF-8') + b'\n')
+        self.compressor.write(
+            json.dumps({"text": data, "meta": meta}, default=json_serial).encode(
+                "UTF-8"
+            )
+            + b"\n"
+        )
 
     def commit(self):
         self.compressor.flush(zstandard.FLUSH_FRAME)
@@ -283,8 +283,10 @@ class Reader:
     def __init__(self):
         pass
 
-    def read_jsonl(self, file, get_meta=False, autojoin_paragraphs=True, para_joiner='\n\n'):
-        with open(file, 'rb') as fh:
+    def read_jsonl(
+        self, file, get_meta=False, autojoin_paragraphs=True, para_joiner="\n\n"
+    ):
+        with open(file, "rb") as fh:
             self.fh = fh
             cctx = zstandard.ZstdDecompressor()
             reader = io.BufferedReader(cctx.stream_reader(fh))
@@ -296,12 +298,12 @@ class Reader:
                     yield ob
                     continue
 
-                text = ob['text']
+                text = ob["text"]
 
                 if autojoin_paragraphs and isinstance(text, list):
                     text = para_joiner.join(text)
 
                 if get_meta:
-                    yield text, (ob['meta'] if 'meta' in ob else {})
+                    yield text, (ob["meta"] if "meta" in ob else {})
                 else:
                     yield text

@@ -1,14 +1,14 @@
-import glob
-import os
-from pathlib import Path
-
 import itertools
-import numpy as np
+import os
+import random
+from pathlib import Path
+from random import random
+
 import torch
 from tokenizers import ByteLevelBPETokenizer
 from torch.utils.data.dataloader import DataLoader
-from torch.utils.data.dataset import ConcatDataset, Dataset, IterableDataset
-from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
+from torch.utils.data.dataset import Dataset
+from torch.utils.data.dataset import IterableDataset
 
 from utils.vocabulary import Vocab
 
@@ -19,7 +19,7 @@ class WebTextDataset(Dataset):
     ):
         self.vocab = vocab
         data = list(itertools.chain.from_iterable(self.vocab.encode_zst(dataset_path)))
-        stop = (len(data)//seq_len) * seq_len
+        stop = (len(data) // seq_len) * seq_len
         self.data = data[:stop]
         self.seq_len = seq_len
 
@@ -29,12 +29,62 @@ class WebTextDataset(Dataset):
     def __getitem__(self, i):
         end_idx = i + self.seq_len
         beg_idx = i
-        
-        data_pre_tensor= self.data[beg_idx:end_idx]
 
-        data =  torch.LongTensor(data_pre_tensor)
-        target =  torch.LongTensor(self.data[i + 1 : i + 1 + self.seq_len])
+        data_pre_tensor = self.data[beg_idx:end_idx]
+
+        data = torch.LongTensor(data_pre_tensor)
+        target = torch.LongTensor(self.data[i + 1 : i + 1 + self.seq_len])
         return data, target, self.seq_len
+
+
+class WebTextIterableDataset(IterableDataset):
+    def __init__(self, files, seq_len, vocab, batch_size):
+        self.filenames = files
+        self.batch_size = batch_size
+        self.vocab = vocab
+        self.seq_len = seq_len
+
+    @property
+    def shuffled_filename_list(self):
+        return random.sample(self.filenames, len(self.filenames))
+
+    def process_data(self, filename):
+        tokens = list(itertools.chain.from_iterable(self.vocab.encode_zst(filename)))
+        for i in range(len(tokens) - self.seq_len):
+            end_idx = i + self.seq_len
+            beg_idx = i
+            data = tokens[beg_idx:end_idx]
+            target = tokens[beg_idx + 1 : beg_idx + 1 + self.seq_len]
+            yield data, target, self.seq_len
+
+    def get_stream(self, filename_list):
+        return itertools.chain.from_iterable(map(self.process_data, filename_list))
+
+    def get_streams(self):
+        return zip(
+            *[
+                self.get_stream(self.shuffled_filename_list)
+                for _ in range(self.batch_size)
+            ]
+        )
+
+    def __iter__(self):
+        return self.get_streams()
+
+
+def collate_fn(batch):
+    data_list, label_list, seq_len_list = [], [], []
+    for _data, _label, _seq in batch:
+        data_list.append(_data)
+        label_list.append(_label)
+        seq_len_list.append(_seq)
+
+    return (
+        torch.LongTensor(data_list),
+        torch.LongTensor(label_list),
+        torch.LongTensor(seq_len_list),
+    )
+
 
 class LMOrderedIterator(IterableDataset):
     def __init__(self, data, length, bsz, bptt=None, device="cpu"):
@@ -44,7 +94,6 @@ class LMOrderedIterator(IterableDataset):
         self.bsz = bsz
         self.len = length
         self.bptt = bptt if bptt else bsz
-
 
         self.device = device
 
@@ -59,7 +108,7 @@ class LMOrderedIterator(IterableDataset):
         self.data = data.view(bsz, -1).t().contiguous().to(device)
 
         # Number of mini-batches
-        #self.n_batch = (self.n_step + self.bptt - 1) // self.bptt
+        # self.n_batch = (self.n_step + self.bptt - 1) // self.bptt
 
     def __len__(self):
         return self.len
@@ -73,7 +122,7 @@ class LMOrderedIterator(IterableDataset):
         beg_idx = i
 
         data = torch.LongTensor(self.data[beg_idx:end_idx])
-        target =  torch.LongTensor(self.data[i + 1 : i + 1 + seq_len])
+        target = torch.LongTensor(self.data[i + 1 : i + 1 + seq_len])
 
         print(data)
 
@@ -110,9 +159,17 @@ class Corpus(object):
             self.vocab.count_file(os.path.join(path, "2_shard_shuff.txt"))
         elif self.dataset == "openwebtext2":
             all_paths = [str(x) for x in Path(path).glob("**/*.zst")]
-            train_paths = [path for idx, path in enumerate(all_paths) if idx % 10 in (0,2, 4, 6, 8,)]
-            valid_paths = [path for idx, path in enumerate(all_paths) if idx % 10 in (1, 9 )]
-            test_paths = [path for idx, path in enumerate(all_paths) if idx % 10 in (3, 7 )]
+            train_paths = [
+                path
+                for idx, path in enumerate(all_paths)
+                if idx % 10 in (0, 2, 4, 6, 8,)
+            ]
+            valid_paths = [
+                path for idx, path in enumerate(all_paths) if idx % 10 in (1, 9)
+            ]
+            test_paths = [
+                path for idx, path in enumerate(all_paths) if idx % 10 in (3, 7)
+            ]
 
         self.vocab.build_vocab()
 
@@ -157,7 +214,7 @@ class Corpus(object):
             self.valid = valid_paths
             self.test = test_paths
 
-    def get_iterator(self, rank, world_size, split,  batch_size, n_ctx, *args, **kwargs):
+    def get_iterator(self, rank, world_size, split, batch_size, n_ctx, *args, **kwargs):
         if split == "train":
             if self.dataset in [
                 "ptb",
@@ -170,13 +227,34 @@ class Corpus(object):
                     self.train, len(self.train), batch_size, *args, **kwargs
                 )
             elif "states" in self.dataset:
-                data_iter = LMOrderedIterator(self.train, len(self.train), batch_size, n_ctx, *args, **kwargs)
+                data_iter = LMOrderedIterator(
+                    self.train, len(self.train), batch_size, n_ctx, *args, **kwargs
+                )
             elif self.dataset == "openwebtext2":
-                n_partition = [n for i, n in enumerate(self.train) if i % world_size == rank]
+                n_partition = [
+                    n for i, n in enumerate(self.train) if i % world_size == rank
+                ]
                 print("{}_{}".format(rank, len(n_partition)))
 
-                data_iter = ConcatDataset([WebTextDataset(data, n_ctx, self.vocab, *args, **kwargs) for data in n_partition])
-                dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False, drop_last=True)
+                # data_iter = ConcatDataset(
+                #     [
+                #         WebTextDataset(data, n_ctx, self.vocab, *args, **kwargs)
+                #         for data in n_partition
+                #     ]
+                # )
+                iterable_dataset = WebTextIterableDataset(
+                    files=n_partition,
+                    vocab=self.vocab,
+                    batch_size=batch_size,
+                    seq_len=n_ctx,
+                )
+                dataloader = DataLoader(
+                    dataset=iterable_dataset,
+                    collate_fn=collate_fn,
+                    batch_size=None,
+                    batch_sampler=None,
+                )
+
                 return dataloader
 
         elif split in ["valid", "test"]:
@@ -190,11 +268,24 @@ class Corpus(object):
                     data, len(data), batch_size, n_ctx, *args, **kwargs
                 )
             elif self.dataset == "openwebtext2":
-                data_iter = ConcatDataset([WebTextDataset(data[i], n_ctx, self.vocab, *args, **kwargs) for i in range(len(data))])
-                dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False, drop_last=True)
+                # data_iter = ConcatDataset(
+                #     [
+                #         WebTextDataset(data[i], n_ctx, self.vocab, *args, **kwargs)
+                #         for i in range(len(data))
+                #     ]
+                # )
+                iterable_dataset = WebTextIterableDataset(
+                    files=data, vocab=self.vocab, batch_size=batch_size, seq_len=n_ctx
+                )
+                dataloader = DataLoader(
+                    dataset=iterable_dataset,
+                    collate_fn=collate_fn,
+                    batch_size=None,
+                    batch_sampler=None,
+                )
 
                 return dataloader
-        
+
         dataloader = DataLoader(data_iter, batch_size=None, shuffle=False,)
         return dataloader
 
@@ -227,8 +318,10 @@ def get_lm_corpus(datadir, dataset):
             kwargs["delimiter"] = ""
             kwargs["vocab_file"] = os.path.join(datadir, "vocab.txt")
         elif dataset == "openwebtext2":
-            tokenizer = ByteLevelBPETokenizer().from_file(vocab_filename=datadir + '/gpt2-vocab.json',
-                                merges_filename=datadir + "/gpt2-merges.txt")
+            tokenizer = ByteLevelBPETokenizer().from_file(
+                vocab_filename=datadir + "/gpt2-vocab.json",
+                merges_filename=datadir + "/gpt2-merges.txt",
+            )
 
             kwargs["tokenizer"] = tokenizer
             kwargs["vocab_file"] = os.path.join(datadir, "gpt2-vocab.json")
@@ -253,7 +346,15 @@ if __name__ == "__main__":
         "--dataset",
         type=str,
         default="openwebtext2",
-        choices=["ptb", "wikitext-2", "wikitext-103", "lm1b", "enwik8", "text8", "openwebtext2"],
+        choices=[
+            "ptb",
+            "wikitext-2",
+            "wikitext-103",
+            "lm1b",
+            "enwik8",
+            "text8",
+            "openwebtext2",
+        ],
         help="dataset name",
     )
     args = parser.parse_args()
