@@ -87,25 +87,21 @@ class Trainer:
 
     def evaluate(self, model, val_iter, rank):
         # Turn on evaluation mode which disables dropout.
-        print('HI')
         model.eval()
 
         # Evaluation
         total_len, total_loss = 0, 0.0
         with torch.no_grad():
-            print('YASSS')
             for i, (data, target, seq_len) in enumerate(val_iter):
                 if self.args.max_eval_steps > 0 and i >= self.args.max_eval_steps:
                     break
                 data = data.to(rank)
                 target = target.to(rank)
-                seq_len = seq_len.to(rank)
+                seq_len = torch.sum(seq_len.to(rank))
                 logits, loss = model(data, target)
                 loss = loss.mean()
                 total_loss += seq_len * loss.float()
                 total_len += seq_len
-                
-
         # Switch back to the training mode
         model.train()
         return total_loss / total_len, total_len
