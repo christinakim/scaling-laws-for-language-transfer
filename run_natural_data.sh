@@ -22,7 +22,11 @@ if [[ $1 == 'train' ]]; then
         --batch_size 4 \
         --gpu0_bsz 1 \
         --eval_interval 1\
+<<<<<<< HEAD
         --n_nodes 1 \
+=======
+        --n_nodes 4 \
+>>>>>>> 59b87a0a266c964cea8fc26f83d04e6dd4ed6517
         --n_gpus 4 \
         --debug \
         --max_epoch 100
