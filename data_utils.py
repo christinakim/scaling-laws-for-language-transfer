@@ -39,7 +39,7 @@ class WebTextDataset(Dataset):
 
 class WebTextIterableDataset(IterableDataset):
     def __init__(self, files, seq_len, vocab, batch_size):
-        self.filenames = files
+        self.filenames = files[:10]
         self.batch_size = batch_size
         self.vocab = vocab
         self.seq_len = seq_len
@@ -49,16 +49,17 @@ class WebTextIterableDataset(IterableDataset):
         return np.random.choice(self.filenames, len(self.filenames))
 
     def process_data(self, filename):
-        tokens = list(itertools.chain.from_iterable(self.vocab.encode_zst(filename)))
-        for i in range(len(tokens) - self.seq_len):
+        tokens = self.vocab.encode_zst(filename)
+        print(len(tokens))
+        for i in range(0, len(tokens)-self.seq_len):
             end_idx = i + self.seq_len
             beg_idx = i
             data = tokens[beg_idx:end_idx]
             target = tokens[beg_idx + 1 : beg_idx + 1 + self.seq_len]
             yield data, target, self.seq_len
-
+        return
     def get_stream(self, filename_list):
-        return itertools.chain.from_iterable(map(self.process_data, filename_list))
+        return itertools.chain.from_iterable(map(self.process_data, itertools.cycle(filename_list)))
 
     def get_streams(self):
         return zip(
@@ -78,7 +79,6 @@ def collate_fn(batch):
         data_list.append(_data)
         label_list.append(_label)
         seq_len_list.append(_seq)
-
     return (
         torch.LongTensor(data_list),
         torch.LongTensor(label_list),
