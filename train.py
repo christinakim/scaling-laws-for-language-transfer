@@ -112,6 +112,7 @@ def main(args):
         model=model, logger=logger, corpus=corpus, args=args, device=device,
     )
     try:
+        logger("spawning {} processes".format(world_size))
         mp.spawn(trainer.train, args=(world_size,), nprocs=world_size, join=True)
 
     except KeyboardInterrupt:

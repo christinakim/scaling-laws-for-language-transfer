@@ -11,7 +11,7 @@ from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataset import IterableDataset
 
 from utils.vocabulary import Vocab
-
+import numpy as np
 
 class WebTextDataset(Dataset):
     def __init__(
@@ -46,7 +46,7 @@ class WebTextIterableDataset(IterableDataset):
 
     @property
     def shuffled_filename_list(self):
-        return random.sample(self.filenames, len(self.filenames))
+        return np.random.choice(self.filenames, len(self.filenames))
 
     def process_data(self, filename):
         tokens = list(itertools.chain.from_iterable(self.vocab.encode_zst(filename)))

@@ -81,7 +81,7 @@ class Trainer:
             backend,
             rank=rank,
             world_size=size,
-            timeout=datetime.timedelta(0, seconds=20),
+            timeout=datetime.timedelta(0, seconds=10),
         )
 
     def cleanup(self):
@@ -146,13 +146,11 @@ class Trainer:
             wandb.run.name = "{}_{}".format(self.args.dataset, self.args.model_size)
             wandb.config.update(self.args)
 
-        self.logger(
-            f"Rank {rank}/{world_size} training process passed data download barrier.\n"
-        )
-
         model = self.model.to(rank)
 
         model = DistributedDataParallel(model, device_ids=[rank])
+        
+        self.logger("getting iterators")
         self.train_iter = self.corpus.get_iterator(
             rank, world_size, "train", self.args.batch_size, self.args.n_ctx,
         )
@@ -160,11 +158,13 @@ class Trainer:
             rank, world_size, "valid", self.args.batch_size, self.args.n_ctx,
         )
 
+        self.logger("getting optimizers")
         optimizer, scheduler = self.configure_optimizers(model, self.args)
 
         # Turn on training mode which enables dropout.
         model.train()
         for epoch in itertools.count(start=1):
+            self.logger("starting epoch {} on device {}".format(epoch, rank))
             self.train_epoch(
                 rank, epoch, model, optimizer, scheduler, wandb,
             )
@@ -181,9 +181,11 @@ class Trainer:
     def train_epoch(
         self, rank, epoch, model, optimizer, scheduler, wandb,
     ):
+        self.logger('inside epoch')
         train_loss = 0
         n_val_no_improve = 0
         for batch_idx, (data, target, seq_len) in enumerate(self.train_iter):
+            self.logger("????????????")
             data = data.to(rank)
             target = target.to(rank)
             logits, loss = model(data, target)
@@ -213,10 +215,13 @@ class Trainer:
             elif self.args.scheduler == "inv_sqrt":
                 scheduler.step()
 
-            if self.train_step % self.args.log_interval == 0:
+            # if self.train_step % self.args.log_interval == 0:
+            if 1:
                 cur_loss = train_loss / self.args.log_interval
                 elapsed = time.time() - self.log_start_time
+                self.logger(cur_loss)
                 if rank == 0:
+                    print("!!!!!!!")
                     log_str = (
                         "| epoch {:3d} step {:>8d} | {:>6d} batches | lr {:.3g} "
                         "| ms/batch {:5.2f} | loss {:5.2f}".format(

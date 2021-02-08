@@ -19,17 +19,13 @@ if [[ $1 == 'train' ]]; then
         --optim adam \
         --warmup_step 0 \
         --max_step 50000 \
-        --batch_size 4 \
+        --batch_size 32 \
         --gpu0_bsz 1 \
-        --eval_interval 1\
-<<<<<<< HEAD
+        --eval_interval 10\
         --n_nodes 1 \
-=======
-        --n_nodes 4 \
->>>>>>> 59b87a0a266c964cea8fc26f83d04e6dd4ed6517
-        --n_gpus 4 \
+        --n_gpus 1 \
         --debug \
-        --max_epoch 100
+        --max_epoch 10
     
 elif [[ $1 == 'eval' ]]; then
     echo 'Run evaluation...'

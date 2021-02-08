@@ -177,15 +177,15 @@ class Vocab(object):
         reader = Reader()
         idx = 0
         for document in reader.read_jsonl(path):
-            if verbose and idx % 50000 == 0:
-                print("    line {}".format(idx))
             symbols = self.tokenizer.encode(document,).tokens
-            encoded.append(self.convert_to_tensor(symbols))
+            encoded.append(self.get_indices(symbols))
             idx += 1
 
         if ordered:
             encoded = torch.cat(encoded)
 
+        if verbose:
+            print("finished encoding zst")
         return encoded
 
     def encode_sents(self, sents, ordered=False, verbose=True):
