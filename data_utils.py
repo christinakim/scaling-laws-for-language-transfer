@@ -1,36 +1,14 @@
-import itertools
 import os
-import random
 from pathlib import Path
-from random import random
-from typing import Tuple
 
 import torch
 from tokenizers import ByteLevelBPETokenizer
 from torch.utils.data.dataloader import DataLoader
-from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataset import IterableDataset
-
-from utils.vocabulary import Reader
-from utils.vocabulary import Vocab
-import numpy as np
 from transformers import GPT2Tokenizer
-import itertools
-import os
-import random
-from pathlib import Path
-from random import random
-from typing import Tuple
-
-import torch
-from tokenizers import ByteLevelBPETokenizer
-from torch.utils.data.dataloader import DataLoader
-from torch.utils.data.dataset import Dataset
-from torch.utils.data.dataset import IterableDataset
 
 from utils.vocabulary import Reader
 from utils.vocabulary import Vocab
-import numpy as np
 
 
 class WebTextDocumentIterator:
@@ -118,8 +96,6 @@ def collate_fn(batch):
         torch.LongTensor(label_list),
         torch.LongTensor(seq_len_list),
     )
-
-
 
 
 class LMOrderedIterator(IterableDataset):
