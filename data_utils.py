@@ -3,6 +3,7 @@ import os
 import random
 from pathlib import Path
 from random import random
+from typing import Tuple
 
 import torch
 from tokenizers import ByteLevelBPETokenizer
@@ -10,67 +11,100 @@ from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataset import IterableDataset
 
+from utils.vocabulary import Reader
+from utils.vocabulary import Vocab
+import numpy as np
+from transformers import GPT2Tokenizer
+import itertools
+import os
+import random
+from pathlib import Path
+from random import random
+from typing import Tuple
+
+import torch
+from tokenizers import ByteLevelBPETokenizer
+from torch.utils.data.dataloader import DataLoader
+from torch.utils.data.dataset import Dataset
+from torch.utils.data.dataset import IterableDataset
+
+from utils.vocabulary import Reader
 from utils.vocabulary import Vocab
 import numpy as np
 
-class WebTextDataset(Dataset):
-    def __init__(
-        self, dataset_path, seq_len, vocab,
-    ):
-        self.vocab = vocab
-        data = list(itertools.chain.from_iterable(self.vocab.encode_zst(dataset_path)))
-        stop = (len(data) // seq_len) * seq_len
-        self.data = data[:stop]
+
+class WebTextDocumentIterator:
+    def __init__(self, dataset_paths):
+        self.dataset_paths = dataset_paths
+
+    def get_document(self, reader, path):
+        return reader.read_jsonl(path)
+
+    def __iter__(self):
+        reader = Reader()
+        for path in self.dataset_paths:
+            yield from self.get_document(reader, path)
+
+
+class TokenizerIterator:
+    def __init__(self, seq_len, tokenizer, dataset_paths):
         self.seq_len = seq_len
+        self.tokenizer = tokenizer
+        self.document_iter = WebTextDocumentIterator(dataset_paths)
 
-    def __len__(self):
-        return len(self.data) - self.seq_len
+    def tokenize_doc(self, x):
+        tokenized = self.tokenizer(text=x, truncation=True).input_ids
+        if len(tokenized) >= self.seq_len:
+            for i in range(len(tokenized) - 128):
+                yield tokenized[i : i + 128], tokenized[i + 1 : i + 1 + 128], len(
+                    tokenized[i : i + 128]
+                )
+        else:
+            pass
 
-    def __getitem__(self, i):
-        end_idx = i + self.seq_len
-        beg_idx = i
-
-        data_pre_tensor = self.data[beg_idx:end_idx]
-
-        data = torch.LongTensor(data_pre_tensor)
-        target = torch.LongTensor(self.data[i + 1 : i + 1 + self.seq_len])
-        return data, target, self.seq_len
+    def __iter__(self):
+        for x in self.document_iter:
+            yield from self.tokenize_doc(x)
 
 
-class WebTextIterableDataset(IterableDataset):
-    def __init__(self, files, seq_len, vocab, batch_size):
-        self.filenames = files[:10]
+class BatchIterator:
+    def __init__(self, seq_len, batch_size, drop_last, tokenizer, dataset_paths):
+        self.tokenizer_iter = TokenizerIterator(
+            seq_len=seq_len, tokenizer=tokenizer, dataset_paths=dataset_paths
+        )
         self.batch_size = batch_size
-        self.vocab = vocab
+        self.drop_last = drop_last
+
+    def __iter__(self):
+        batch = []
+        for x in self.tokenizer_iter:
+            batch.append(x)
+            if len(batch) == self.batch_size:
+                yield collate_fn(batch)
+                batch = []
+        if len(batch) > 0 and not self.drop_last:
+            yield collate_fn(batch)
+        else:
+            pass
+
+
+class WebTextIter(IterableDataset):
+    def __init__(self, batch_size, drop_last, dataset_paths, seq_len, tokenizer=None):
+        if tokenizer is None:
+            tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
         self.seq_len = seq_len
-
-    @property
-    def shuffled_filename_list(self):
-        return np.random.choice(self.filenames, len(self.filenames))
-
-    def process_data(self, filename):
-        tokens = self.vocab.encode_zst(filename)
-        print(len(tokens))
-        for i in range(0, len(tokens)-self.seq_len):
-            end_idx = i + self.seq_len
-            beg_idx = i
-            data = tokens[beg_idx:end_idx]
-            target = tokens[beg_idx + 1 : beg_idx + 1 + self.seq_len]
-            yield data, target, self.seq_len
-        return
-    def get_stream(self, filename_list):
-        return itertools.chain.from_iterable(map(self.process_data, itertools.cycle(filename_list)))
-
-    def get_streams(self):
-        return zip(
-            *[
-                self.get_stream(self.shuffled_filename_list)
-                for _ in range(self.batch_size)
-            ]
+        self.dataset_paths = dataset_paths
+        self.batch_iter = BatchIterator(
+            seq_len=seq_len,
+            batch_size=batch_size,
+            drop_last=drop_last,
+            tokenizer=tokenizer,
+            dataset_paths=dataset_paths,
         )
 
     def __iter__(self):
-        return self.get_streams()
+        for x in self.batch_iter:
+            yield x
 
 
 def collate_fn(batch):
@@ -84,6 +118,8 @@ def collate_fn(batch):
         torch.LongTensor(label_list),
         torch.LongTensor(seq_len_list),
     )
+
+
 
 
 class LMOrderedIterator(IterableDataset):
@@ -242,20 +278,15 @@ class Corpus(object):
                 #         for data in n_partition
                 #     ]
                 # )
-                iterable_dataset = WebTextIterableDataset(
-                    files=n_partition,
-                    vocab=self.vocab,
+
+                dataset = WebTextIter(
                     batch_size=batch_size,
+                    drop_last=True,
+                    dataset_paths=n_partition,
                     seq_len=n_ctx,
                 )
-                dataloader = DataLoader(
-                    dataset=iterable_dataset,
-                    collate_fn=collate_fn,
-                    batch_size=None,
-                    batch_sampler=None,
-                )
 
-                return dataloader
+                return dataset
 
         elif split in ["valid", "test"]:
             data = self.valid if split == "valid" else self.test
@@ -274,17 +305,14 @@ class Corpus(object):
                 #         for i in range(len(data))
                 #     ]
                 # )
-                iterable_dataset = WebTextIterableDataset(
-                    files=data, vocab=self.vocab, batch_size=batch_size, seq_len=n_ctx
-                )
-                dataloader = DataLoader(
-                    dataset=iterable_dataset,
-                    collate_fn=collate_fn,
-                    batch_size=None,
-                    batch_sampler=None,
+                dataset = WebTextIter(
+                    batch_size=batch_size,
+                    drop_last=True,
+                    dataset_paths=data,
+                    seq_len=n_ctx,
                 )
 
-                return dataloader
+                return dataset
 
         dataloader = DataLoader(data_iter, batch_size=None, shuffle=False,)
         return dataloader

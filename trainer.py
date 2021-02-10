@@ -149,7 +149,7 @@ class Trainer:
         model = self.model.to(rank)
 
         model = DistributedDataParallel(model, device_ids=[rank])
-        
+
         self.logger("getting iterators")
         self.train_iter = self.corpus.get_iterator(
             rank, world_size, "train", self.args.batch_size, self.args.n_ctx,
@@ -181,7 +181,7 @@ class Trainer:
     def train_epoch(
         self, rank, epoch, model, optimizer, scheduler, wandb,
     ):
-        self.logger('inside epoch')
+        self.logger("inside epoch")
         train_loss = 0
         n_val_no_improve = 0
         for batch_idx, (data, target, seq_len) in enumerate(self.train_iter):
