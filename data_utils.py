@@ -24,6 +24,19 @@ class WebTextDocumentIterator:
             yield from self.get_document(reader, path)
 
 
+class FileIterator:
+    def __init__(self, dataset_paths):
+        self.dataset_paths = dataset_paths
+
+    def get_file(self, path):
+        with open(path, "r", encoding="utf-8") as f:
+            yield from f.readlines()
+
+    def __iter__(self):
+        for path in self.dataset_paths:
+            yield from self.get_file(path)
+
+
 class TokenizerIterator:
     def __init__(self, seq_len, tokenizer, dataset_paths):
         self.seq_len = seq_len
@@ -32,11 +45,14 @@ class TokenizerIterator:
 
     def tokenize_doc(self, x):
         tokenized = self.tokenizer(text=x, truncation=True).input_ids
+        tokenized.append(self.tokenizer.eos_token_id)
+
+        tokenized.insert(0, self.tokenizer.eos_token_id)
         if len(tokenized) >= self.seq_len:
-            for i in range(len(tokenized) - 128):
-                yield tokenized[i : i + 128], tokenized[i + 1 : i + 1 + 128], len(
-                    tokenized[i : i + 128]
-                )
+            for i in range(len(tokenized) - self.seq_len):
+                yield tokenized[i : i + self.seq_len], tokenized[
+                    i + 1 : i + 1 + self.seq_len
+                ], len(tokenized[i : i + self.seq_len])
         else:
             pass
 
@@ -53,21 +69,35 @@ class BatchIterator:
         self.batch_size = batch_size
         self.drop_last = drop_last
 
+    def collate_fn(self, batch):
+        data_list, label_list, seq_len_list = [], [], []
+        for _data, _label, _seq in batch:
+            data_list.append(_data)
+            label_list.append(_label)
+            seq_len_list.append(_seq)
+        return (
+            torch.LongTensor(data_list).permute(1, 0),
+            torch.LongTensor(label_list).permute(1, 0),
+            torch.LongTensor(seq_len_list),
+        )
+
     def __iter__(self):
         batch = []
         for x in self.tokenizer_iter:
             batch.append(x)
             if len(batch) == self.batch_size:
-                yield collate_fn(batch)
+                yield self.collate_fn(batch)
                 batch = []
         if len(batch) > 0 and not self.drop_last:
-            yield collate_fn(batch)
+            yield self.collate_fn(batch)
         else:
             pass
 
 
 class WebTextIter(IterableDataset):
-    def __init__(self, batch_size, drop_last, dataset_paths, seq_len, tokenizer=None):
+    def __init__(
+        self, batch_size, dataset_paths, seq_len, tokenizer=None, drop_last=True
+    ):
         if tokenizer is None:
             tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
         self.seq_len = seq_len
@@ -82,21 +112,10 @@ class WebTextIter(IterableDataset):
 
     def __iter__(self):
         for x in self.batch_iter:
-            yield x
-
-
-def collate_fn(batch):
-    data_list, label_list, seq_len_list = [], [], []
-    for _data, _label, _seq in batch:
-        data_list.append(_data)
-        label_list.append(_label)
-        seq_len_list.append(_seq)
-    return (
-        torch.LongTensor(data_list),
-        torch.LongTensor(label_list),
-        torch.LongTensor(seq_len_list),
-    )
-
+            try:
+                yield x
+            except StopIteration:
+                return
 
 class LMOrderedIterator(IterableDataset):
     def __init__(self, data, length, bsz, bptt=None, device="cpu"):
@@ -244,25 +263,20 @@ class Corpus(object):
                 )
             elif self.dataset == "openwebtext2":
                 n_partition = [
-                    n for i, n in enumerate(self.train) if i % world_size == rank
+                    n for i, n in enumerate(self.train[:8]) if i % world_size == rank
                 ]
                 print("train partitions {}_{}".format(rank, len(n_partition)))
 
-                # data_iter = ConcatDataset(
-                #     [
-                #         WebTextDataset(data, n_ctx, self.vocab, *args, **kwargs)
-                #         for data in n_partition
-                #     ]
-                # )
-
-                dataset = WebTextIter(
-                    batch_size=batch_size,
-                    drop_last=True,
-                    dataset_paths=n_partition,
-                    seq_len=n_ctx,
+                data_iter = ConcatDataset(
+                    [
+                        WebTextDataset(data, n_ctx, self.vocab, *args, **kwargs)
+                        for data in n_partition
+                    ]
                 )
-
-                return dataset
+                dataloader = DataLoader(
+                    data_iter, batch_size=batch_size, shuffle=False, drop_last=True
+                )
+                return dataloader
 
         elif split in ["valid", "test"]:
             data = self.valid if split == "valid" else self.test
