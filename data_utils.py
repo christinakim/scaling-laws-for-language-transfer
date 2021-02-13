@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-from typing import List
 
 import torch
 from tokenizers import ByteLevelBPETokenizer
@@ -51,9 +50,9 @@ class TokenizerIterator:
         tokenized.insert(0, self.tokenizer.eos_token_id)
         if len(tokenized) >= self.seq_len:
             for i in range(len(tokenized) - self.seq_len):
-                yield tokenized[i : i + self.seq_len], tokenized[i + 1 : i + 1 + self.seq_len], len(
-                    tokenized[i : i + self.seq_len]
-                )
+                yield tokenized[i : i + self.seq_len], tokenized[
+                    i + 1 : i + 1 + self.seq_len
+                ], len(tokenized[i : i + self.seq_len])
         else:
             pass
 
@@ -259,11 +258,20 @@ class Corpus(object):
                     self.train, len(self.train), batch_size, n_ctx, *args, **kwargs
                 )
             elif self.dataset == "openwebtext2":
-                n_partition = [n for i, n in enumerate(self.train[:8]) if i % world_size == rank]
+                n_partition = [
+                    n for i, n in enumerate(self.train[:8]) if i % world_size == rank
+                ]
                 print("{}_{}".format(rank, len(n_partition)))
 
-                data_iter = ConcatDataset([WebTextDataset(data, n_ctx, self.vocab, *args, **kwargs) for data in n_partition])
-                dataloader = DataLoader(data_iter, batch_size=batch_size, shuffle=False, drop_last=True)
+                data_iter = ConcatDataset(
+                    [
+                        WebTextDataset(data, n_ctx, self.vocab, *args, **kwargs)
+                        for data in n_partition
+                    ]
+                )
+                dataloader = DataLoader(
+                    data_iter, batch_size=batch_size, shuffle=False, drop_last=True
+                )
                 return dataloader
 
         elif split in ["valid", "test"]:

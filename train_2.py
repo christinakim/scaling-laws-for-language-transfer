@@ -48,9 +48,7 @@ if __name__ == "__main__":
         default="/Users/christina/openai-scholars/wikitext2",
         help="location of the data corpus",
     )
-    parser.add_argument(
-        "--dataset", type=str, default="wikitext2", help="dataset name"
-    )
+    parser.add_argument("--dataset", type=str, default="wikitext2", help="dataset name")
     parser.add_argument(
         "--model_size",
         type=str,

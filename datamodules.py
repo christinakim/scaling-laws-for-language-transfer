@@ -70,9 +70,13 @@ class OpenWebText2DataModule(pl.LightningDataModule):
         self.data_dir = data_dir
 
     def setup(self, stage: Optional[str] = None):
-        self.train_paths = [str(x) for x in Path(self.data_dir+"/train").glob("**/*.zst")]
-        self.val_paths = [str(x) for x in Path(self.data_dir+"/val").glob("**/*.zst")]
-        self.test_paths = [str(x) for x in Path(self.data_dir+"/test").glob("**/*.zst")]
+        self.train_paths = [
+            str(x) for x in Path(self.data_dir + "/train").glob("**/*.zst")
+        ]
+        self.val_paths = [str(x) for x in Path(self.data_dir + "/val").glob("**/*.zst")]
+        self.test_paths = [
+            str(x) for x in Path(self.data_dir + "/test").glob("**/*.zst")
+        ]
 
         vocab = build_vocab_from_json(self.data_dir + "/gpt2-vocab.json")
         self.vocab = vocab
@@ -90,18 +94,30 @@ class OpenWebText2DataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         train_dataset = WebTextIter(
-            dataset_paths=self.train_paths, seq_len=self.sequence_length, batch_size=self.batch_size
+            dataset_paths=self.train_paths,
+            seq_len=self.sequence_length,
+            batch_size=self.batch_size,
         )
-        data_loader = DataLoader(train_dataset, num_workers=24, batch_size=None, sampler=None)
+        data_loader = DataLoader(
+            train_dataset, num_workers=24, batch_size=None, sampler=None
+        )
         return data_loader
 
     def val_dataloader(self):
-        val_dataset = WebTextIter(dataset_paths=self.val_paths, seq_len=self.sequence_length, batch_size=self.batch_size)
+        val_dataset = WebTextIter(
+            dataset_paths=self.val_paths,
+            seq_len=self.sequence_length,
+            batch_size=self.batch_size,
+        )
 
         return DataLoader(val_dataset, num_workers=24, batch_size=None, sampler=None)
 
     def test_dataloader(self):
-        test_dataset = WebTextIter(dataset_paths=self.test_paths, seq_len=self.sequence_length, batch_size=self.batch_size)
+        test_dataset = WebTextIter(
+            dataset_paths=self.test_paths,
+            seq_len=self.sequence_length,
+            batch_size=self.batch_size,
+        )
         return DataLoader(test_dataset, num_workers=24, batch_size=None, sampler=None)
 
 
@@ -159,7 +175,11 @@ class WikiText2DataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         if self.trainer.on_gpu() and self.trainer.gpus > 1:
-            data = [x for i, x in enumerate(self.train_data) if i % self.trainer.gpus == self.trainer.global_rank]
+            data = [
+                x
+                for i, x in enumerate(self.train_data)
+                if i % self.trainer.gpus == self.trainer.global_rank
+            ]
         else:
             data = self.train_data
         train_dataset = LMDataset(data, self.sequence_length, self.batch_size)
@@ -168,7 +188,11 @@ class WikiText2DataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         if self.trainer.on_gpu() and self.trainer.gpus > 1:
-            data = [x for i, x in enumerate(self.val_data) if i % self.trainer.gpus == self.trainer.global_rank]
+            data = [
+                x
+                for i, x in enumerate(self.val_data)
+                if i % self.trainer.gpus == self.trainer.global_rank
+            ]
         else:
             data = self.val_data
         val_dataset = LMDataset(data, self.sequence_length, self.batch_size)
@@ -177,11 +201,14 @@ class WikiText2DataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         if self.trainer.on_gpu() and self.trainer.gpus > 1:
-            data = [x for i, x in enumerate(self.test_data) if i % self.trainer.gpus == self.trainer.global_rank]
+            data = [
+                x
+                for i, x in enumerate(self.test_data)
+                if i % self.trainer.gpus == self.trainer.global_rank
+            ]
         else:
             data = self.test_data
         return DataLoader(data, num_workers=24, batch_size=None)
-
 
 
 class WebTextIterableDataset(IterableDataset):

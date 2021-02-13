@@ -52,7 +52,13 @@ def get_trainer(args):
     #     d_ff=args.d_ff,
     # )
     # model = GPT(configuration)
-    configuration = GPT2Config(vocab_size=args.n_tokens, n_ctx=args.n_ctx, n_layer=args.n_layer, n_head=args.n_head, n_inner=args.d_ff)
+    configuration = GPT2Config(
+        vocab_size=args.n_tokens,
+        n_ctx=args.n_ctx,
+        n_layer=args.n_layer,
+        n_head=args.n_head,
+        n_inner=args.d_ff,
+    )
     model = GPT2LMHeadModel(configuration)
     args.n_all_param = sum([p.nelement() for p in model.parameters()])
     args.n_nonemb_param = sum(
@@ -201,10 +207,6 @@ class GPTLightning(pl.LightningModule):
             raise NotImplementedError
 
         return [optimizer], [scheduler]
-
-
-
-
 
 
 class Trainer:
