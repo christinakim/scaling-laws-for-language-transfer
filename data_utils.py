@@ -246,7 +246,7 @@ class Corpus(object):
                 n_partition = [
                     n for i, n in enumerate(self.train) if i % world_size == rank
                 ]
-                print("{}_{}".format(rank, len(n_partition)))
+                print("train partitions {}_{}".format(rank, len(n_partition)))
 
                 # data_iter = ConcatDataset(
                 #     [
@@ -281,6 +281,8 @@ class Corpus(object):
                 #         for i in range(len(data))
                 #     ]
                 # )
+                print("eval partitions {}_{}".format(rank, len(data)))
+
                 dataset = WebTextIter(
                     batch_size=batch_size,
                     drop_last=True,

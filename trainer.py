@@ -185,7 +185,6 @@ class Trainer:
         train_loss = 0
         n_val_no_improve = 0
         for batch_idx, (data, target, seq_len) in enumerate(self.train_iter):
-            self.logger("????????????")
             data = data.to(rank)
             target = target.to(rank)
             logits, loss = model(data, target)
@@ -215,13 +214,10 @@ class Trainer:
             elif self.args.scheduler == "inv_sqrt":
                 scheduler.step()
 
-            # if self.train_step % self.args.log_interval == 0:
-            if 1:
-                cur_loss = train_loss / self.args.log_interval
-                elapsed = time.time() - self.log_start_time
-                self.logger(cur_loss)
+            if self.train_step % self.args.log_interval == 0:
                 if rank == 0:
-                    print("!!!!!!!")
+                    cur_loss = train_loss / self.args.log_interval
+                    elapsed = time.time() - self.log_start_time
                     log_str = (
                         "| epoch {:3d} step {:>8d} | {:>6d} batches | lr {:.3g} "
                         "| ms/batch {:5.2f} | loss {:5.2f}".format(

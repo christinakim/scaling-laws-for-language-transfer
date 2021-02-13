@@ -7,8 +7,8 @@ if [[ $1 == 'train' ]]; then
         --data /datadrive/$2/ \
         --dataset $2 \
         --model_size $3 \
-        --n_positions 500 \
-        --n_ctx 128 \
+        --n_positions 1024 \
+        --n_ctx 512 \
         --n_layer 2 \
         --d_model 64 \
         --n_head 2 \
@@ -19,9 +19,9 @@ if [[ $1 == 'train' ]]; then
         --optim adam \
         --warmup_step 0 \
         --max_step 50000 \
-        --batch_size 32 \
+        --batch_size 64 \
         --gpu0_bsz 1 \
-        --eval_interval 10\
+        --eval_interval 100\
         --n_nodes 1 \
         --n_gpus 1 \
         --debug \
