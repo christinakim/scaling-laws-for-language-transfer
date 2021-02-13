@@ -112,8 +112,10 @@ class WebTextIter(IterableDataset):
 
     def __iter__(self):
         for x in self.batch_iter:
-            yield x
-
+            try:
+                yield x
+            except StopIteration:
+                return
 
 class LMOrderedIterator(IterableDataset):
     def __init__(self, data, length, bsz, bptt=None, device="cpu"):
