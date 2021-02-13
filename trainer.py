@@ -97,13 +97,14 @@ class GPTLightning(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # training_step defined the train loop. It is independent of forward
         x, y, x_len = batch
-        logits, loss = self.model(x, y)
+        output = self.model(input_ids=x, labels=y)
+        loss = output[0].item()
         self.log_dict(
             {
                 "loss": loss,
                 "ppl": math.exp(loss),
                 "bpc": (loss / math.log(2)),
-                "tokens": self.global_step * x_len,
+                # "tokens": self.global_step * x_len,
             },
             sync_dist=True,
             on_step=True,
@@ -114,15 +115,14 @@ class GPTLightning(pl.LightningModule):
                 "loss": loss,
                 "ppl": math.exp(loss),
                 "bpc": (loss / math.log(2)),
-                "tokens": self.global_step * x_len,
             },
         )
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y, x_len = batch
-        output = self.model(x, y)
-        loss = output.loss
+        output = self.model(input_ids=x, labels=y)
+        loss = output[0].item()
 
         # Add sync_dist=True to sync logging across all GPU workers
         self.log_dict(
@@ -147,7 +147,8 @@ class GPTLightning(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         x, y, x_len = batch
-        logits, loss = self.model(x, y)
+        outputs = self.model(input_ids=x, labels=y)
+        loss = outputs[0].item()
         # Add sync_dist=True to sync logging across all GPU workers
         self.log_dict(
             {

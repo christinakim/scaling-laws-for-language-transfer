@@ -76,8 +76,8 @@ class BatchIterator:
             label_list.append(_label)
             seq_len_list.append(_seq)
         return (
-            torch.LongTensor(data_list),
-            torch.LongTensor(label_list),
+            torch.LongTensor(data_list).permute(1, 0),
+            torch.LongTensor(label_list).permute(1, 0),
             torch.LongTensor(seq_len_list),
         )
 
