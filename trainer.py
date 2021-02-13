@@ -11,6 +11,9 @@ import torch.optim as optim
 import wandb
 from pytorch_lightning.loggers import WandbLogger
 from torch.nn.parallel.distributed import DistributedDataParallel
+from torch.utils.data import DataLoader
+from transformers import GPT2Config
+from transformers import GPT2LMHeadModel
 
 from data_utils import get_lm_corpus
 from datamodules import OpenWebText2DataModule
@@ -29,8 +32,8 @@ def get_trainer(args):
     elif args.dataset == "openwebtext2":
         corpus = get_lm_corpus(args.data, args.dataset)
 
-        data_module = OpenWebText2_V2_DataModule(
-            data_dir=args.data, sequence_length=args.n_ctx, batch_size=args.batch_size, vocab=corpus.vocab,
+        data_module = OpenWebText2DataModule(
+            data_dir=args.data, sequence_length=args.n_ctx, batch_size=args.batch_size,
         )
     else:
         raise NotImplementedError
@@ -40,16 +43,17 @@ def get_trainer(args):
     ntokens = len(data_module.vocab)
     args.n_tokens = ntokens
 
-    configuration = GPTConfig(
-        vocab_size=args.n_tokens,
-        context_length=args.n_ctx,
-        n_embd=args.d_embd,
-        n_layer=args.n_layer,
-        n_head=args.n_head,
-        d_ff=args.d_ff,
-    )
-    model = GPT(configuration)
-
+    # configuration = GPTConfig(
+    #     vocab_size=args.n_tokens,
+    #     context_length=args.n_ctx,
+    #     n_embd=args.d_embd,
+    #     n_layer=args.n_layer,
+    #     n_head=args.n_head,
+    #     d_ff=args.d_ff,
+    # )
+    # model = GPT(configuration)
+    configuration = GPT2Config(vocab_size=args.n_tokens, n_ctx=args.n_ctx, n_layer=args.n_layer, n_head=args.n_head, n_inner=args.d_ff)
+    model = GPT2LMHeadModel(configuration)
     args.n_all_param = sum([p.nelement() for p in model.parameters()])
     args.n_nonemb_param = sum(
         [p.nelement() for p in model.parameters() if p.requires_grad]
@@ -117,7 +121,9 @@ class GPTLightning(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         x, y, x_len = batch
-        logits, loss = self.model(x, y)
+        output = self.model(x, y)
+        loss = output.loss
+
         # Add sync_dist=True to sync logging across all GPU workers
         self.log_dict(
             {
@@ -195,6 +201,10 @@ class GPTLightning(pl.LightningModule):
             raise NotImplementedError
 
         return [optimizer], [scheduler]
+
+
+
+
 
 
 class Trainer:

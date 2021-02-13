@@ -45,11 +45,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data",
         type=str,
-        default="/Users/christina/openai-scholars/openwebtext2",
+        default="/Users/christina/openai-scholars/wikitext2",
         help="location of the data corpus",
     )
     parser.add_argument(
-        "--dataset", type=str, default="openwebtext2", help="dataset name"
+        "--dataset", type=str, default="wikitext2", help="dataset name"
     )
     parser.add_argument(
         "--model_size",

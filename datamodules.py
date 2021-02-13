@@ -17,6 +17,7 @@ from torchtext.utils import download_from_url
 from torchtext.utils import extract_archive
 from torchtext.vocab import build_vocab_from_iterator
 
+from data_utils import WebTextIter
 from utils.vocabulary import Reader
 
 
@@ -68,60 +69,40 @@ class OpenWebText2DataModule(pl.LightningDataModule):
         self.sequence_length = sequence_length
         self.data_dir = data_dir
 
-    def data_process(self, path, vocab):
-        reader = Reader()
-        encoded = []
-        tokenizer = ByteLevelBPETokenizer().from_file(
-            vocab_filename=self.data_dir + "/gpt2-vocab.json",
-            merges_filename=self.data_dir + "/gpt2-merges.txt",
-        )
-        for document in reader.read_jsonl(path):
-            symbols = tokenizer.encode(document,).tokens
-            encoded.extend(symbols)
-
-        data = [torch.tensor(vocab[item], dtype=torch.long) for item in encoded]
-        return torch.stack(tuple(filter(lambda t: t.numel() > 0, data)))
-
-    def batchify(self, data, bsz):
-        # Divide the dataset into bsz parts.
-        nbatch = data.size(0) // bsz
-        # Trim off any extra elements that wouldn't cleanly fit (remainders).
-        data = data.narrow(0, 0, nbatch * bsz)
-        # Evenly divide the data across the bsz batches.
-        data = data.view(bsz, -1).t().contiguous()
-        return data
-
     def setup(self, stage: Optional[str] = None):
-        all_paths = [str(x) for x in Path(self.data_dir).glob("**/*.zst")]
+        self.train_paths = [str(x) for x in Path(self.data_dir+"/train").glob("**/*.zst")]
+        self.val_paths = [str(x) for x in Path(self.data_dir+"/val").glob("**/*.zst")]
+        self.test_paths = [str(x) for x in Path(self.data_dir+"/test").glob("**/*.zst")]
 
         vocab = build_vocab_from_json(self.data_dir + "/gpt2-vocab.json")
         self.vocab = vocab
-
-        self.train_data = self.data_process(all_paths[0], vocab)
-        self.val_data = self.data_process(all_paths[1], vocab)
-        self.test_data = self.data_process(all_paths[2], vocab)
-
-        if stage == "fit" or stage is None:
-            self.train_data = self.batchify(self.train_data, self.batch_size)
-            self.val_data = self.batchify(self.val_data, self.eval_batch_size)
-        if stage == "test" or stage is None:
-            self.test_data = self.batchify(self.test_data, self.eval_batch_size)
+        # self.train_paths = [
+        #     path
+        #     for idx, path in enumerate(all_paths)
+        #     if idx % 10 in (0, 2, 4, 6, 8,)
+        # ]
+        # self.valid_paths = [
+        #     path for idx, path in enumerate(all_paths) if idx % 10 in (1, 9)
+        # ]
+        # self.test_paths = [
+        #     path for idx, path in enumerate(all_paths) if idx % 10 in (3, 7)
+        # ]
 
     def train_dataloader(self):
-        train_dataset = LMDataset(
-            self.train_data, self.sequence_length, self.batch_size
+        train_dataset = WebTextIter(
+            dataset_paths=self.train_paths, seq_len=self.sequence_length, batch_size=self.batch_size
         )
-        data_loader = DataLoader(train_dataset, num_workers=24, batch_size=None)
+        data_loader = DataLoader(train_dataset, num_workers=24, batch_size=None, sampler=None)
         return data_loader
 
     def val_dataloader(self):
-        val_dataset = LMDataset(self.val_data, self.sequence_length, self.batch_size)
+        val_dataset = WebTextIter(dataset_paths=self.val_paths, seq_len=self.sequence_length, batch_size=self.batch_size)
 
-        return DataLoader(val_dataset, num_workers=24, batch_size=None)
+        return DataLoader(val_dataset, num_workers=24, batch_size=None, sampler=None)
 
     def test_dataloader(self):
-        test_dataset = LMDataset(self.test_data, self.sequence_length, self.batch_size)
-        return DataLoader(test_dataset, num_workers=24, batch_size=None)
+        test_dataset = WebTextIter(dataset_paths=self.test_paths, seq_len=self.sequence_length, batch_size=self.batch_size)
+        return DataLoader(test_dataset, num_workers=24, batch_size=None, sampler=None)
 
 
 class WikiText2DataModule(pl.LightningDataModule):
@@ -177,20 +158,29 @@ class WikiText2DataModule(pl.LightningDataModule):
             self.test_data = self.batchify(self.test_data, self.eval_batch_size)
 
     def train_dataloader(self):
-        train_dataset = LMDataset(
-            self.train_data, self.sequence_length, self.batch_size
-        )
+        if self.trainer.on_gpu() and self.trainer.gpus > 1:
+            data = [x for i, x in enumerate(self.train_data) if i % self.trainer.gpus == self.trainer.global_rank]
+        else:
+            data = self.train_data
+        train_dataset = LMDataset(data, self.sequence_length, self.batch_size)
         data_loader = DataLoader(train_dataset, num_workers=24, batch_size=None)
         return data_loader
 
     def val_dataloader(self):
-        val_dataset = LMDataset(self.val_data, self.sequence_length, self.batch_size)
+        if self.trainer.on_gpu() and self.trainer.gpus > 1:
+            data = [x for i, x in enumerate(self.val_data) if i % self.trainer.gpus == self.trainer.global_rank]
+        else:
+            data = self.val_data
+        val_dataset = LMDataset(data, self.sequence_length, self.batch_size)
 
         return DataLoader(val_dataset, num_workers=24, batch_size=None)
 
     def test_dataloader(self):
-        test_dataset = LMDataset(self.test_data, self.sequence_length, self.batch_size)
-        return DataLoader(test_dataset, num_workers=24, batch_size=None)
+        if self.trainer.on_gpu() and self.trainer.gpus > 1:
+            data = [x for i, x in enumerate(self.test_data) if i % self.trainer.gpus == self.trainer.global_rank]
+        else:
+            data = self.test_data
+        return DataLoader(data, num_workers=24, batch_size=None)
 
 
 
