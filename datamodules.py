@@ -1,24 +1,24 @@
+import glob
 import io
 import itertools
 import json
-from pathlib import Path
+import os
 import random
+from pathlib import Path
 from typing import Optional
+
 import numpy as np
 import pytorch_lightning as pl
 import torch
-from tokenizers import ByteLevelBPETokenizer
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from torch.utils.data import IterableDataset
-from torchnlp.samplers import DistributedSampler
 from torchtext.data.utils import get_tokenizer
 from torchtext.utils import download_from_url
 from torchtext.utils import extract_archive
 from torchtext.vocab import build_vocab_from_iterator
 
 from data_utils import WebTextIter
-from utils.vocabulary import Reader
 
 
 def build_vocab_from_file(vocab_file):
@@ -58,10 +58,10 @@ class LMDataset(Dataset):
 class OpenWebText2DataModule(pl.LightningDataModule):
     def __init__(
         self,
-        data_dir,
         sequence_length: int,
         batch_size: int,
         eval_batch_size: int = None,
+        data_dir="/datadrive/openwebtext2",
     ):
         super().__init__()
         self.batch_size = batch_size
@@ -70,13 +70,10 @@ class OpenWebText2DataModule(pl.LightningDataModule):
         self.data_dir = data_dir
 
     def setup(self, stage: Optional[str] = None):
-        self.train_paths = [
-            str(x) for x in Path(self.data_dir + "/train").glob("**/*.zst")
-        ]
-        self.val_paths = [str(x) for x in Path(self.data_dir + "/val").glob("**/*.zst")]
-        self.test_paths = [
-            str(x) for x in Path(self.data_dir + "/test").glob("**/*.zst")
-        ]
+        files = glob.glob(os.path.join(self.data_dir + "/shards", "*"))
+        self.train_paths = files[:98]
+        self.val_paths = files[98:99]
+        self.test_paths = files[99:]
 
         vocab = build_vocab_from_json(self.data_dir + "/gpt2-vocab.json")
         self.vocab = vocab

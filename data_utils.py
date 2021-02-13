@@ -95,7 +95,9 @@ class BatchIterator:
 
 
 class WebTextIter(IterableDataset):
-    def __init__(self, batch_size, drop_last, dataset_paths, seq_len, tokenizer=None):
+    def __init__(
+        self, batch_size, dataset_paths, seq_len, tokenizer=None, drop_last=True
+    ):
         if tokenizer is None:
             tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
         self.seq_len = seq_len

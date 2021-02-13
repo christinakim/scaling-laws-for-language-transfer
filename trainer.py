@@ -1,26 +1,22 @@
+import datetime
 import itertools
 import math
 import os
 import time
 
 import pytorch_lightning as pl
-import datetime
 import torch
 import torch.distributed as dist
 import torch.optim as optim
 import wandb
 from pytorch_lightning.loggers import WandbLogger
 from torch.nn.parallel.distributed import DistributedDataParallel
-from torch.utils.data import DataLoader
 from transformers import GPT2Config
 from transformers import GPT2LMHeadModel
 
 from data_utils import get_lm_corpus
 from datamodules import OpenWebText2DataModule
-from datamodules import OpenWebText2_V2_DataModule
 from datamodules import WikiText2DataModule
-from gpt import GPT
-from gpt import GPTConfig
 from utils.sample import sample_words
 
 
@@ -30,10 +26,8 @@ def get_trainer(args):
             sequence_length=args.n_ctx, batch_size=args.batch_size
         )
     elif args.dataset == "openwebtext2":
-        corpus = get_lm_corpus(args.data, args.dataset)
-
         data_module = OpenWebText2DataModule(
-            data_dir=args.data, sequence_length=args.n_ctx, batch_size=args.batch_size,
+            sequence_length=args.n_ctx, batch_size=args.batch_size,
         )
     else:
         raise NotImplementedError
