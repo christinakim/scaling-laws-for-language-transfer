@@ -293,10 +293,12 @@ class Trainer:
                 data = data.to(rank)
                 target = target.to(rank)
                 seq_len = torch.sum(seq_len.to(rank))
-                logits, loss = model(data, target)
+                output = model(input_ids=data, labels=target)
+                loss = output[0]
                 loss = loss.mean()
                 total_loss += seq_len * loss.float()
                 total_len += seq_len
+
         # Switch back to the training mode
         model.train()
         return total_loss / total_len, total_len
@@ -314,7 +316,8 @@ class Trainer:
                     break
                 data = data.to(0)
                 target = target.to(0)
-                logits, loss = model(data, target)
+                output = model(input_ids=data, labels=target)
+                loss = output[0]
                 loss = loss.mean()
                 total_loss += seq_len * loss.float()
                 total_len += seq_len
@@ -381,8 +384,8 @@ class Trainer:
         for batch_idx, (data, target, seq_len) in enumerate(self.train_iter):
             data = data.to(rank)
             target = target.to(rank)
-            logits, loss = model(data, target)
-
+            output = model(input_ids=data, labels=target)
+            loss = output[0]
             model.zero_grad()
 
             loss.backward()

@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-
+import glob
 import torch
 from tokenizers import ByteLevelBPETokenizer
 from torch.utils.data.dataloader import DataLoader
@@ -189,18 +189,10 @@ class Corpus(object):
             self.vocab.count_file(os.path.join(path, "1_shard_shuff.txt"))
             self.vocab.count_file(os.path.join(path, "2_shard_shuff.txt"))
         elif self.dataset == "openwebtext2":
-            all_paths = [str(x) for x in Path(path).glob("**/*.zst")]
-            train_paths = [
-                path
-                for idx, path in enumerate(all_paths)
-                if idx % 10 in (0, 2, 4, 6, 8,)
-            ]
-            valid_paths = [
-                path for idx, path in enumerate(all_paths) if idx % 10 in (1, 9)
-            ]
-            test_paths = [
-                path for idx, path in enumerate(all_paths) if idx % 10 in (3, 7)
-            ]
+            files = glob.glob(os.path.join(path + "/shards", "*"))
+            train_paths = files[:98]
+            valid_paths = files[98:99]
+            test_paths = files[99:]
 
         self.vocab.build_vocab()
 
@@ -263,20 +255,17 @@ class Corpus(object):
                 )
             elif self.dataset == "openwebtext2":
                 n_partition = [
-                    n for i, n in enumerate(self.train[:8]) if i % world_size == rank
+                    n for i, n in enumerate(self.train) if i % world_size == rank
                 ]
                 print("train partitions {}_{}".format(rank, len(n_partition)))
 
-                data_iter = ConcatDataset(
-                    [
-                        WebTextDataset(data, n_ctx, self.vocab, *args, **kwargs)
-                        for data in n_partition
-                    ]
+                dataset = WebTextIter(
+                    batch_size=batch_size,
+                    drop_last=True,
+                    dataset_paths=n_partition,
+                    seq_len=n_ctx,
                 )
-                dataloader = DataLoader(
-                    data_iter, batch_size=batch_size, shuffle=False, drop_last=True
-                )
-                return dataloader
+                return dataset
 
         elif split in ["valid", "test"]:
             data = self.valid if split == "valid" else self.test

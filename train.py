@@ -10,6 +10,8 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import wandb
+from transformers import GPT2Config
+from transformers import GPT2LMHeadModel
 
 from data_utils import get_lm_corpus
 from gpt import GPT
@@ -69,20 +71,19 @@ def main(args):
         args.regex = corpus.regex
         regex_compiled = re.compile(str(args.regex))
 
-    eval_batch_size = 5
+    # eval_batch_size = 5
 
     ###############################################################################
     # Build the model
     ###############################################################################
-    configuration = GPTConfig(
+    configuration = GPT2Config(
         vocab_size=args.n_tokens,
-        context_length=args.n_ctx,
-        n_embd=args.d_embd,
+        n_ctx=args.n_ctx,
         n_layer=args.n_layer,
         n_head=args.n_head,
-        d_ff=args.d_ff,
+        n_inner=args.d_ff,
     )
-    model = GPT(configuration)
+    model = GPT2LMHeadModel(configuration)
 
     args.n_all_param = sum([p.nelement() for p in model.parameters()])
     args.n_nonemb_param = sum(
@@ -266,7 +267,7 @@ if __name__ == "__main__":
         help="min learning rate for cosine scheduler",
     )
     parser.add_argument("--gpu0_bsz", type=int, default=-1, help="batch size on gpu 0")
-    parser.add_argument("--max_eval_steps", type=int, default=-1, help="max eval steps")
+    parser.add_argument("--max_eval_steps", type=int, default=10, help="max eval steps")
     parser.add_argument(
         "--sample_softmax",
         type=int,

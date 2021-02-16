@@ -2,13 +2,13 @@
 
 if [[ $1 == 'train' ]]; then
     echo 'Run training...'
-    python train_2.py \
+    python train.py \
         --cuda \
-        --data /Users/christina/openai-scholars/$2 \
+        --data /datadrive/$2 \
         --dataset $2 \
         --model_size $3 \
         --n_positions 1024 \
-        --n_ctx 512 \
+        --n_ctx 128 \
         --n_layer 2 \
         --d_model 64 \
         --n_head 2 \
@@ -19,13 +19,14 @@ if [[ $1 == 'train' ]]; then
         --optim adam \
         --warmup_step 0 \
         --max_step 50000 \
-        --batch_size 64 \
+        --batch_size 32 \
         --gpu0_bsz 1 \
         --eval_interval 100\
         --n_nodes 1 \
         --n_gpus 1 \
         --debug \
-        --max_epoch 10
+        --max_epoch 10 \
+        --max_eval_steps 5
 
 elif [[ $1 == 'eval' ]]; then
     echo 'Run evaluation...'
