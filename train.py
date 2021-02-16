@@ -59,7 +59,8 @@ def main(args):
 
     world_size = args.n_gpus
     args.lr = args.lr
-    args.batch_size = args.batch_size // world_size
+    if world_size > 0:
+        args.batch_size = args.batch_size // world_size
 
     ###############################################################################
     # Load data
@@ -113,9 +114,11 @@ def main(args):
         model=model, logger=logger, corpus=corpus, args=args, device=device,
     )
     try:
-        logger("spawning {} processes".format(world_size))
-        mp.spawn(trainer.train, args=(world_size,), nprocs=world_size, join=True)
-
+        if world_size > 0:
+            logger("spawning {} processes".format(world_size))
+            mp.spawn(trainer.train, args=(world_size,), nprocs=world_size, join=True)
+        else:
+            trainer.train(0, 1)
     except KeyboardInterrupt:
         dist.destroy_process_group()
         logger("-" * 100)
@@ -154,11 +157,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data",
         type=str,
-        default="../data/wikitext-103",
+        default="/Users/christina/openai-scholars/openwebtext2",
         help="location of the data corpus",
     )
     parser.add_argument(
-        "--dataset", type=str, default="wikitext-103", help="dataset name"
+        "--dataset", type=str, default="openwebtext2", help="dataset name"
     )
     parser.add_argument(
         "--model_size",
@@ -178,6 +181,7 @@ if __name__ == "__main__":
             "large",
         ],
         help="model size",
+        default="small",
     )
     parser.add_argument(
         "--n_layer", type=int, default=12, help="number of total layers"
@@ -286,7 +290,7 @@ if __name__ == "__main__":
     parser.add_argument("--entity", type=str, default="openai-scholars")
     parser.add_argument("--n_val_stop", type=int, default=3)
     parser.add_argument("--n_nodes", default=1, type=int, metavar="N")
-    parser.add_argument("--n_gpus", default=1, type=int, help="number of gpus per node")
+    parser.add_argument("--n_gpus", default=0, type=int, help="number of gpus per node")
     parser.add_argument("--nr", default=0, type=int, help="ranking within the nodes")
     args = parser.parse_args()
     main(args)

@@ -70,7 +70,8 @@ class OpenWebText2DataModule(pl.LightningDataModule):
         self.data_dir = data_dir
 
     def setup(self, stage: Optional[str] = None):
-        files = glob.glob(os.path.join(self.data_dir + "/shards", "*"))
+        # files = glob.glob(os.path.join(self.data_dir + "/shards", "*"))
+        files = glob.glob(os.path.join(self.data_dir, "*.jsonl.zst"))
         self.train_paths = files[:98]
         self.val_paths = files[98:99]
         self.test_paths = files[99:]
@@ -107,7 +108,7 @@ class OpenWebText2DataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
         )
 
-        return DataLoader(val_dataset, num_workers=24, batch_size=None, sampler=None)
+        return DataLoader(val_dataset, num_workers=24, batch_size=None, sampler=None,)
 
     def test_dataloader(self):
         test_dataset = WebTextIter(

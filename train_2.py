@@ -45,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data",
         type=str,
-        default="/datadrive/openwebtext2",
+        default="//Users/christina/openai-scholars/openwebtext2",
         help="location of the data corpus",
     )
     parser.add_argument("--dataset", type=str, default="openwebtext2", help="dataset name")
@@ -158,7 +158,7 @@ if __name__ == "__main__":
         help="min learning rate for cosine scheduler",
     )
     parser.add_argument("--gpu0_bsz", type=int, default=-1, help="batch size on gpu 0")
-    parser.add_argument("--max_eval_steps", type=int, default=-1, help="max eval steps")
+    parser.add_argument("--max_eval_steps", type=int, default=10, help="max eval steps")
     parser.add_argument(
         "--sample_softmax",
         type=int,
@@ -177,7 +177,7 @@ if __name__ == "__main__":
     parser.add_argument("--entity", type=str, default="openai-scholars")
     parser.add_argument("--n_val_stop", type=int, default=3)
     parser.add_argument("--n_nodes", default=1, type=int, metavar="N")
-    parser.add_argument("--n_gpus", default=1, type=int, help="number of gpus per node")
+    parser.add_argument("--n_gpus", default=0, type=int, help="number of gpus per node")
     parser.add_argument("--nr", default=0, type=int, help="ranking within the nodes")
     args = parser.parse_args()
     main(args)

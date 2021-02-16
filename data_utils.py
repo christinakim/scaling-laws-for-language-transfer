@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 import glob
+import random
+
 import torch
 from tokenizers import ByteLevelBPETokenizer
 from torch.utils.data.dataloader import DataLoader
@@ -20,9 +22,32 @@ class WebTextDocumentIterator:
 
     def __iter__(self):
         reader = Reader()
+        random.shuffle(self.dataset_paths)
         for path in self.dataset_paths:
             yield from self.get_document(reader, path)
 
+class ShuffleIterator:
+    def __init__(self, dataset_paths, buffer_size=10):
+        self.document_iter = WebTextDocumentIterator(dataset_paths)
+        self.buffer_size = buffer_size
+
+    def __iter__(self):
+        chunk = []
+        if self.buffer_size is None:
+            for x in self.document_iter:
+                chunk.append(x)
+            random.shuffle(chunk)
+            yield from chunk
+        else:
+            for x in self.document_iter:
+                chunk.append(x)
+                if len(chunk) == self.buffer_size:
+                    random.shuffle(chunk)
+                    yield from chunk
+                    chunk = []
+            if chunk:
+                random.shuffle(chunk)
+                yield from chunk
 
 class FileIterator:
     def __init__(self, dataset_paths):
@@ -41,7 +66,7 @@ class TokenizerIterator:
     def __init__(self, seq_len, tokenizer, dataset_paths):
         self.seq_len = seq_len
         self.tokenizer = tokenizer
-        self.document_iter = WebTextDocumentIterator(dataset_paths)
+        self.shuffle_iter = ShuffleIterator(dataset_paths)
 
     def tokenize_doc(self, x):
         tokenized = self.tokenizer(text=x, truncation=True).input_ids
@@ -57,7 +82,7 @@ class TokenizerIterator:
             pass
 
     def __iter__(self):
-        for x in self.document_iter:
+        for x in self.shuffle_iter:
             yield from self.tokenize_doc(x)
 
 

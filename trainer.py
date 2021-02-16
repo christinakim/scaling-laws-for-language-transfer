@@ -27,7 +27,7 @@ def get_trainer(args):
         )
     elif args.dataset == "openwebtext2":
         data_module = OpenWebText2DataModule(
-            sequence_length=args.n_ctx, batch_size=args.batch_size,
+            sequence_length=args.n_ctx, batch_size=args.batch_size, data_dir=args.data
         )
     else:
         raise NotImplementedError
@@ -70,6 +70,7 @@ def get_trainer(args):
             logger=wandb_logger,
             accelerator="ddp",
             gradient_clip_val=args.clip,
+            limit_val_batches=args.max_eval_steps,
         )
     else:
         trainer = pl.Trainer(
@@ -78,6 +79,7 @@ def get_trainer(args):
             gpus=args.n_gpus,
             logger=wandb_logger,
             gradient_clip_val=args.clip,
+            limit_val_batches=args.max_eval_steps,
         )
     trainer.fit(gpt_pl, datamodule=data_module)
 
@@ -97,8 +99,8 @@ class GPTLightning(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # training_step defined the train loop. It is independent of forward
         x, y, x_len = batch
-        output = self.model(input_ids=x, labels=y)
-        loss = output[0].item()
+        outputs = self.model(input_ids=x, labels=y)
+        loss = outputs[0].item()
         self.log_dict(
             {
                 "loss": loss,
@@ -117,12 +119,12 @@ class GPTLightning(pl.LightningModule):
                 "bpc": (loss / math.log(2)),
             },
         )
-        return loss
+        return outputs[0]
 
     def validation_step(self, batch, batch_idx):
         x, y, x_len = batch
-        output = self.model(input_ids=x, labels=y)
-        loss = output[0].item()
+        outputs = self.model(input_ids=x, labels=y)
+        loss = outputs[0].item()
 
         # Add sync_dist=True to sync logging across all GPU workers
         self.log_dict(
@@ -143,7 +145,7 @@ class GPTLightning(pl.LightningModule):
             },
         )
 
-        return loss
+        return outputs[0]
 
     def test_step(self, batch, batch_idx):
         x, y, x_len = batch
@@ -167,7 +169,7 @@ class GPTLightning(pl.LightningModule):
                 "test_bpc": (loss / math.log(2)),
             },
         )
-        return loss
+        return outputs[0]
 
     def configure_optimizers(self):
         if self.args.optim.lower() == "adam":
