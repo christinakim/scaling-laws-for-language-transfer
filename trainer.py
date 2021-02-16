@@ -118,6 +118,7 @@ class GPTLightning(pl.LightningModule):
                 "ppl": math.exp(loss),
                 "bpc": (loss / math.log(2)),
             },
+            commit=False,
         )
         return outputs[0]
 
@@ -143,6 +144,8 @@ class GPTLightning(pl.LightningModule):
                 "validation_ppl": math.exp(loss),
                 "validation_bpc": (loss / math.log(2)),
             },
+            commit=False,
+
         )
 
         return outputs[0]
@@ -168,6 +171,8 @@ class GPTLightning(pl.LightningModule):
                 "test_ppl": math.exp(loss),
                 "test_bpc": (loss / math.log(2)),
             },
+            commit=False,
+
         )
         return outputs[0]
 
