@@ -13,6 +13,7 @@ from pytorch_lightning.loggers import WandbLogger
 from torch.nn.parallel.distributed import DistributedDataParallel
 from transformers import GPT2Config
 from transformers import GPT2LMHeadModel
+from transformers import GPT2Tokenizer
 
 from data_utils import get_lm_corpus
 from datamodules import OpenWebText2DataModule
@@ -27,7 +28,7 @@ def get_trainer(args):
         )
     elif args.dataset == "openwebtext2":
         data_module = OpenWebText2DataModule(
-            sequence_length=args.n_ctx, batch_size=args.batch_size, data_dir=args.data
+            sequence_length=args.n_ctx, batch_size=args.batch_size, eval_batch_size=args.eval_batch_size, data_dir=args.data
         )
     else:
         raise NotImplementedError
@@ -61,7 +62,7 @@ def get_trainer(args):
     gpt_pl = GPTLightning(model=model, args=args)
 
     run_name = "{}_{}".format(args.dataset, args.model_size)
-    wandb_logger = WandbLogger(name=run_name, project=args.dataset, entity=args.entity,)
+    wandb_logger = WandbLogger(name=run_name, project=args.dataset, entity=args.entity)
     if args.n_gpus >= 1:
         trainer = pl.Trainer(
             val_check_interval=args.eval_interval,
@@ -73,6 +74,7 @@ def get_trainer(args):
             limit_val_batches=args.max_eval_steps,
         )
     else:
+        print('no ddp')
         trainer = pl.Trainer(
             val_check_interval=args.eval_interval,
             weights_summary="full",
@@ -90,6 +92,9 @@ class GPTLightning(pl.LightningModule):
         self.args = args
         self.model = model
         self.save_hyperparameters(args)
+        self.train_seen = []
+        self.val_seen =[]
+        self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
 
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
@@ -98,53 +103,79 @@ class GPTLightning(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         # training_step defined the train loop. It is independent of forward
+
         x, y, x_len = batch
+        # for item in x:
+        #     a = self.tokenizer.decode(item)
+        #     print(len(item))
+        #     print(a)
+
+        #     if a in self.train_seen:
+        #         print("OFFENDING {}".format(a))
+
+        #         print("BATCHES ARE {}".format(self.train_seen))
+        #         raise ValueError
+        #     else:
+        #         self.train_seen.append(a)
         outputs = self.model(input_ids=x, labels=y)
         loss = outputs[0].item()
-        self.log_dict(
-            {
-                "loss": loss,
-                "ppl": math.exp(loss),
-                "bpc": (loss / math.log(2)),
-                # "tokens": self.global_step * x_len,
-            },
-            sync_dist=True,
-            on_step=True,
-            on_epoch=True,
-        )
+        # self.log_metrics(
+        #     {
+        #         "loss": loss,
+        #         "ppl": math.exp(loss),
+        #         "bpc": (loss / math.log(2)),
+        #         "tokens": self.global_step * torch.sum(x_len).item(),
+        #     },
+        #     sync_dist=True,
+        #     on_step=True,
+        #     on_epoch=True,
+        # )
         self.logger.experiment.log(
             {
                 "loss": loss,
                 "ppl": math.exp(loss),
                 "bpc": (loss / math.log(2)),
+                "tokens": self.global_step * torch.sum(x_len).item(),
+
             },
-            commit=False,
+            step=self.global_step,
         )
         return outputs[0]
 
     def validation_step(self, batch, batch_idx):
         x, y, x_len = batch
+        # for item in x:
+        #     print(len(item))
+
+        #     a = self.tokenizer.decode(item)
+        #     print(a)
+
+        #     if a in self.val_seen:
+        #         print("OFFENDING {}".format(a))
+        #         print("BATCHES ARE {}".format(self.val_seen))
+        #         raise ValueError
+        #     else:
+        #         self.val_seen.append(a)
         outputs = self.model(input_ids=x, labels=y)
         loss = outputs[0].item()
 
         # Add sync_dist=True to sync logging across all GPU workers
-        self.log_dict(
-            {
-                "validation_loss": loss,
-                "validation_ppl": math.exp(loss),
-                "validation_bpc": (loss / math.log(2)),
-            },
-            on_step=True,
-            on_epoch=True,
-            sync_dist=True,
-        )
+        # self.logger.log_metrics(
+        #     {
+        #         "validation_loss": loss,
+        #         "validation_ppl": math.exp(loss),
+        #         "validation_bpc": (loss / math.log(2)),
+        #     },
+        #     sync_dist=True,
+
+        # )
         self.logger.experiment.log(
             {
                 "validation_loss": loss,
                 "validation_ppl": math.exp(loss),
                 "validation_bpc": (loss / math.log(2)),
             },
-            commit=False,
+            step=self.global_step,
 
         )
 

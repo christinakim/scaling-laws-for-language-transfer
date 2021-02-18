@@ -1,7 +1,5 @@
 import os
 from pathlib import Path
-import glob
-import random
 
 import torch
 from tokenizers import ByteLevelBPETokenizer
@@ -11,6 +9,13 @@ from transformers import GPT2Tokenizer
 
 from utils.vocabulary import Reader
 from utils.vocabulary import Vocab
+import random
+from itertools import chain, cycle, islice
+import torch.utils.data as data
+
+import time
+import torch
+import numpy as np
 
 
 class WebTextDocumentIterator:
@@ -22,32 +27,9 @@ class WebTextDocumentIterator:
 
     def __iter__(self):
         reader = Reader()
-        random.shuffle(self.dataset_paths)
         for path in self.dataset_paths:
             yield from self.get_document(reader, path)
 
-class ShuffleIterator:
-    def __init__(self, dataset_paths, buffer_size=10):
-        self.document_iter = WebTextDocumentIterator(dataset_paths)
-        self.buffer_size = buffer_size
-
-    def __iter__(self):
-        chunk = []
-        if self.buffer_size is None:
-            for x in self.document_iter:
-                chunk.append(x)
-            random.shuffle(chunk)
-            yield from chunk
-        else:
-            for x in self.document_iter:
-                chunk.append(x)
-                if len(chunk) == self.buffer_size:
-                    random.shuffle(chunk)
-                    yield from chunk
-                    chunk = []
-            if chunk:
-                random.shuffle(chunk)
-                yield from chunk
 
 class FileIterator:
     def __init__(self, dataset_paths):
@@ -66,7 +48,7 @@ class TokenizerIterator:
     def __init__(self, seq_len, tokenizer, dataset_paths):
         self.seq_len = seq_len
         self.tokenizer = tokenizer
-        self.shuffle_iter = ShuffleIterator(dataset_paths)
+        self.document_iter = WebTextDocumentIterator(dataset_paths)
 
     def tokenize_doc(self, x):
         tokenized = self.tokenizer(text=x, truncation=True).input_ids
@@ -75,24 +57,25 @@ class TokenizerIterator:
         tokenized.insert(0, self.tokenizer.eos_token_id)
         if len(tokenized) >= self.seq_len:
             for i in range(len(tokenized) - self.seq_len):
-                yield tokenized[i : i + self.seq_len], tokenized[
-                    i + 1 : i + 1 + self.seq_len
-                ], len(tokenized[i : i + self.seq_len])
+                yield tokenized[i : i + self.seq_len], tokenized[i + 1 : i + 1 + self.seq_len], len(
+                    tokenized[i : i + self.seq_len]
+                )
         else:
             pass
 
     def __iter__(self):
-        for x in self.shuffle_iter:
+        for x in self.document_iter:
             yield from self.tokenize_doc(x)
 
 
 class BatchIterator:
     def __init__(self, seq_len, batch_size, drop_last, tokenizer, dataset_paths):
-        self.tokenizer_iter = TokenizerIterator(
-            seq_len=seq_len, tokenizer=tokenizer, dataset_paths=dataset_paths
-        )
+
+        self.dataset_paths = dataset_paths
         self.batch_size = batch_size
         self.drop_last = drop_last
+        self.seq_len = seq_len
+        self.tokenizer = tokenizer
 
     def collate_fn(self, batch):
         data_list, label_list, seq_len_list = [], [], []
@@ -101,28 +84,34 @@ class BatchIterator:
             label_list.append(_label)
             seq_len_list.append(_seq)
         return (
-            torch.LongTensor(data_list).permute(1, 0),
-            torch.LongTensor(label_list).permute(1, 0),
+            torch.LongTensor(data_list).permute(1,0),
+            torch.LongTensor(label_list).permute(1,0),
             torch.LongTensor(seq_len_list),
         )
-
-    def __iter__(self):
-        batch = []
+    def process_data(self, dataset):
+        self.tokenizer_iter = TokenizerIterator(self.seq_len, self.tokenizer, [dataset])
         for x in self.tokenizer_iter:
-            batch.append(x)
-            if len(batch) == self.batch_size:
-                yield self.collate_fn(batch)
-                batch = []
-        if len(batch) > 0 and not self.drop_last:
-            yield self.collate_fn(batch)
-        else:
-            pass
+            yield x
+            
+    def shuffled_data_list(self, i):
+        split = len(self.dataset_paths) // self.batch_size
+        dataset_paths = self.dataset_paths[(i*split):((i+1)*split)]
+        return random.sample(dataset_paths, len(dataset_paths))
+        
+    
+    def get_stream(self, data_list):
+        return chain.from_iterable(map(self.process_data, cycle(data_list)))
+    
+    def get_streams(self):
+        return zip(*[self.get_stream(self.shuffled_data_list(i)) for i in range(self.batch_size)])
+    
+    def __iter__(self):
+        return self.get_streams()
+
 
 
 class WebTextIter(IterableDataset):
-    def __init__(
-        self, batch_size, dataset_paths, seq_len, tokenizer=None, drop_last=True
-    ):
+    def __init__(self, batch_size, dataset_paths, seq_len, tokenizer=None, drop_last=True):
         if tokenizer is None:
             tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
         self.seq_len = seq_len
@@ -136,11 +125,23 @@ class WebTextIter(IterableDataset):
         )
 
     def __iter__(self):
-        for x in self.batch_iter:
-            try:
-                yield x
-            except StopIteration:
-                return
+        try:
+            for x in self.batch_iter:
+                yield self.collate_fn(x)
+        except StopIteration:
+            return
+            
+    def collate_fn(self, batch):
+        data_list, label_list, seq_len_list = [], [], []
+        for _data, _label, _seq in batch:
+            data_list.append(_data)
+            label_list.append(_label)
+            seq_len_list.append(_seq)
+        return (
+            torch.LongTensor(data_list).permute(1,0),
+            torch.LongTensor(label_list).permute(1,0),
+            torch.LongTensor(seq_len_list),
+        )
 
 class LMOrderedIterator(IterableDataset):
     def __init__(self, data, length, bsz, bptt=None, device="cpu"):

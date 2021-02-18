@@ -13,7 +13,6 @@ if [[ $1 == 'train' ]]; then
         --d_model 64 \
         --n_head 2 \
         --d_ff 4 \
-        --lr 0.0025 \
         --dropout 0.1 \
         --dropatt 0.0 \
         --optim adam \

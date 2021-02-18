@@ -65,16 +65,16 @@ class OpenWebText2DataModule(pl.LightningDataModule):
     ):
         super().__init__()
         self.batch_size = batch_size
-        self.eval_batch_size = eval_batch_size if eval_batch_size else batch_size
+        self.eval_batch_size = eval_batch_size if eval_batch_size else 5
         self.sequence_length = sequence_length
         self.data_dir = data_dir
 
     def setup(self, stage: Optional[str] = None):
-        # files = glob.glob(os.path.join(self.data_dir + "/shards", "*"))
-        files = glob.glob(os.path.join(self.data_dir, "*.jsonl.zst"))
-        self.train_paths = files[:98]
-        self.val_paths = files[98:99]
-        self.test_paths = files[99:]
+        files = glob.glob(os.path.join(self.data_dir + "/shards", "*"))
+        #files = glob.glob(os.path.join(self.data_dir, "*.jsonl.zst"))
+        self.train_paths = files[:80]
+        self.val_paths = files[80:90]
+        self.test_paths = files[90:]
 
         vocab = build_vocab_from_json(self.data_dir + "/gpt2-vocab.json")
         self.vocab = vocab
@@ -105,16 +105,17 @@ class OpenWebText2DataModule(pl.LightningDataModule):
         val_dataset = WebTextIter(
             dataset_paths=self.val_paths,
             seq_len=self.sequence_length,
-            batch_size=self.batch_size,
+            batch_size=self.eval_batch_size,
         )
 
-        return DataLoader(val_dataset, num_workers=24, batch_size=None, sampler=None,)
+        data_loader = DataLoader(val_dataset, num_workers=24,batch_size=None, sampler=None,)
+        return data_loader
 
     def test_dataloader(self):
         test_dataset = WebTextIter(
             dataset_paths=self.test_paths,
             seq_len=self.sequence_length,
-            batch_size=self.batch_size,
+            batch_size=self.eval_batch_size,
         )
         return DataLoader(test_dataset, num_workers=24, batch_size=None, sampler=None)
 
