@@ -1,4 +1,5 @@
 import os
+import glob
 from pathlib import Path
 
 import torch
@@ -94,9 +95,9 @@ class BatchIterator:
             yield x
             
     def shuffled_data_list(self, i):
-        split = len(self.dataset_paths) // self.batch_size
-        dataset_paths = self.dataset_paths[(i*split):((i+1)*split)]
-        return random.sample(dataset_paths, len(dataset_paths))
+        #split = len(self.dataset_paths) // self.batch_size
+        #dataset_paths = self.dataset_paths[(i*split):((i+1)*split)]
+        return random.sample(self.dataset_paths, len(self.dataset_paths))
         
     
     def get_stream(self, data_list):
@@ -216,9 +217,9 @@ class Corpus(object):
             self.vocab.count_file(os.path.join(path, "2_shard_shuff.txt"))
         elif self.dataset == "openwebtext2":
             files = glob.glob(os.path.join(path + "/shards", "*"))
-            train_paths = files[:98]
-            valid_paths = files[98:99]
-            test_paths = files[99:]
+            train_paths = files[:80]
+            valid_paths = files[80:90]
+            test_paths = files[90:]
 
         self.vocab.build_vocab()
 

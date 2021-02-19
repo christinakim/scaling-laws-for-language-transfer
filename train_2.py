@@ -19,9 +19,14 @@ def main(args):
         args.n_head = config.n_head
         args.d_ff = config.d_ff
         args.d_attn = config.d_attn
+    
+    args.accumulate_grad_batches = 512 // args.batch_size
+    # args.warmup_step = args.accumulate_grad_batches * args.warmup_step
 
     if args.d_embd < 0:
         args.d_embd = args.d_model
+    
+    args.d_ff = args.d_embd * args.d_ff
 
     assert args.batch_size % args.batch_chunk == 0
 
@@ -116,10 +121,10 @@ if __name__ == "__main__":
         action="store_true",
         help="only clip the gradient of non-embedding params",
     )
-    parser.add_argument("--max_step", type=int, default=100000, help="upper step limit")
+    parser.add_argument("--max_step", type=int, default=250000, help="upper step limit")
     parser.add_argument("--max_epoch", type=int, help="upper epoch limit")
     parser.add_argument("--batch_size", type=int, default=32, help="batch size")
-    parser.add_argument("--eval_batch_size", type=int, default=5, help="batch size")
+    parser.add_argument("--eval_batch_size", type=int, default=32, help="batch size")
     parser.add_argument(
         "--batch_chunk",
         type=int,

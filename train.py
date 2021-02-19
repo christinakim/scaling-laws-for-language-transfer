@@ -12,6 +12,7 @@ import torch.multiprocessing as mp
 import wandb
 from transformers import GPT2Config
 from transformers import GPT2LMHeadModel
+from datamodules import OpenWebText2DataModule
 
 from data_utils import get_lm_corpus
 from gpt import GPT
@@ -85,6 +86,13 @@ def main(args):
         n_inner=args.d_ff,
     )
     model = GPT2LMHeadModel(configuration)
+    data_module = OpenWebText2DataModule(
+            sequence_length=args.n_ctx, batch_size=args.batch_size, eval_batch_size=args.eval_batch_size, data_dir=args.data
+        )
+    data_module.prepare_data()
+    data_module.setup("fit")
+    ntokens = len(data_module.vocab)
+    args.n_tokens = ntokens
 
     args.n_all_param = sum([p.nelement() for p in model.parameters()])
     args.n_nonemb_param = sum(
@@ -111,7 +119,7 @@ def main(args):
 
     # At any point you can hit Ctrl + C to break out of training early.
     trainer = Trainer(
-        model=model, logger=logger, corpus=corpus, args=args, device=device,
+        model=model, logger=logger, corpus=corpus, args=args, device=device, data_module=data_module,
     )
     try:
         if world_size > 0:
@@ -289,6 +297,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--entity", type=str, default="openai-scholars")
     parser.add_argument("--n_val_stop", type=int, default=3)
+    parser.add_argument("--eval_batch_size", type=int, default=3)
     parser.add_argument("--n_nodes", default=1, type=int, metavar="N")
     parser.add_argument("--n_gpus", default=0, type=int, help="number of gpus per node")
     parser.add_argument("--nr", default=0, type=int, help="ranking within the nodes")

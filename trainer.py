@@ -3,9 +3,12 @@ import itertools
 import math
 import os
 import time
+from typing import Callable
+from typing import Optional
 
 import pytorch_lightning as pl
 import torch
+from torch.optim import Optimizer
 import torch.distributed as dist
 import torch.optim as optim
 import wandb
@@ -19,6 +22,7 @@ from data_utils import get_lm_corpus
 from datamodules import OpenWebText2DataModule
 from datamodules import WikiText2DataModule
 from utils.sample import sample_words
+from torch.nn import functional as F
 
 
 def get_trainer(args):
@@ -53,7 +57,10 @@ def get_trainer(args):
         n_layer=args.n_layer,
         n_head=args.n_head,
         n_inner=args.d_ff,
+        n_embd=args.d_embd, 
     )
+    
+
     model = GPT2LMHeadModel(configuration)
     args.n_all_param = sum([p.nelement() for p in model.parameters()])
     args.n_nonemb_param = sum(
@@ -63,7 +70,8 @@ def get_trainer(args):
 
     run_name = "{}_{}".format(args.dataset, args.model_size)
     wandb_logger = WandbLogger(name=run_name, project=args.dataset, entity=args.entity)
-    if args.n_gpus >= 1:
+
+    if args.n_gpus > 1:
         trainer = pl.Trainer(
             val_check_interval=args.eval_interval,
             weights_summary="full",
@@ -71,7 +79,10 @@ def get_trainer(args):
             logger=wandb_logger,
             accelerator="ddp",
             gradient_clip_val=args.clip,
-            limit_val_batches=args.max_eval_steps,
+            limit_val_batches=args.max_eval_steps * args.accumulate_grad_batches,
+            max_steps=args.max_step,
+            accumulate_grad_batches=args.accumulate_grad_batches,
+            enable_pl_optimizer=True,
         )
     else:
         print('no ddp')
@@ -81,7 +92,10 @@ def get_trainer(args):
             gpus=args.n_gpus,
             logger=wandb_logger,
             gradient_clip_val=args.clip,
-            limit_val_batches=args.max_eval_steps,
+            limit_val_batches=args.max_eval_steps * args.accumulate_grad_batches,
+            accumulate_grad_batches=args.accumulate_grad_batches,
+            max_steps=args.max_step,
+            enable_pl_optimizer=True,
         )
     trainer.fit(gpt_pl, datamodule=data_module)
 
@@ -103,7 +117,6 @@ class GPTLightning(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         # training_step defined the train loop. It is independent of forward
-
         x, y, x_len = batch
         # for item in x:
         #     a = self.tokenizer.decode(item)
@@ -118,7 +131,14 @@ class GPTLightning(pl.LightningModule):
         #     else:
         #         self.train_seen.append(a)
         outputs = self.model(input_ids=x, labels=y)
-        loss = outputs[0].item()
+        loss = outputs[0]
+        
+        if batch_idx % self.args.accumulate_grad_batches == 0: 
+            opt = self.optimizers()
+            if self.trainer.global_step < self.args.warmup_step:
+                lr_scale = min(1., float(self.trainer.global_step + 1) / self.args.warmup_step)
+                for pg in opt.param_groups:
+                    pg['lr'] = lr_scale * self.args.lr
         # self.log_metrics(
         #     {
         #         "loss": loss,
@@ -130,17 +150,22 @@ class GPTLightning(pl.LightningModule):
         #     on_step=True,
         #     on_epoch=True,
         # )
+        float_loss = loss.item()
         self.logger.experiment.log(
             {
-                "loss": loss,
-                "ppl": math.exp(loss),
-                "bpc": (loss / math.log(2)),
+                "loss": float_loss,
+                "ppl": math.exp(float_loss),
+                "bpc": (float_loss / math.log(2)),
                 "tokens": self.global_step * torch.sum(x_len).item(),
+                "lr": self.optimizers().param_groups[0]["lr"],
+
 
             },
             step=self.global_step,
         )
-        return outputs[0]
+
+        
+        return loss
 
     def validation_step(self, batch, batch_idx):
         x, y, x_len = batch
@@ -180,6 +205,37 @@ class GPTLightning(pl.LightningModule):
         )
 
         return outputs[0]
+    def validation_epoch_end(self, validation_step_outputs):
+        epoch_metric = torch.mean(torch.stack([x for x in validation_step_outputs]))
+        
+        self.logger.experiment.log(
+            {
+                "validation_avg_loss": epoch_metric.item(),
+                "validation_avg_ppl": math.exp(epoch_metric.item()),
+                "validation_avg_bpc": (epoch_metric.item() / math.log(2)),
+            },
+            step=self.global_step,
+
+        )
+        sentence_prefix = "I eat"
+ 
+        input_ids = self.tokenizer.encode(
+            sentence_prefix,
+            add_special_tokens=False,
+            return_tensors="pt",
+        ).to(self.device)
+        output_ids = self.model.generate(
+        input_ids=input_ids,
+        do_sample=True,
+        max_length=20,  # desired output sentence length
+        pad_token_id=self.model.config.eos_token_id,
+        )[0].tolist()
+    
+        generated_text = self.tokenizer.decode(
+            output_ids,
+            clean_up_tokenization_spaces=True)
+        self.log("generated", generated_text, prog_bar=True)
+        
 
     def test_step(self, batch, batch_idx):
         x, y, x_len = batch
@@ -202,8 +258,7 @@ class GPTLightning(pl.LightningModule):
                 "test_ppl": math.exp(loss),
                 "test_bpc": (loss / math.log(2)),
             },
-            commit=False,
-
+            step=self.global_step,
         )
         return outputs[0]
 
@@ -219,7 +274,7 @@ class GPTLightning(pl.LightningModule):
             # because in previous versions eta_min is default to 0
             # rather than the default value of lr_min 1e-6
             scheduler = optim.lr_scheduler.CosineAnnealingLR(
-                optimizer, self.args.max_step, eta_min=self.args.eta_min
+                optimizer, self.trainer.max_steps, eta_min=self.args.eta_min
             )  # should use eta_min arg
 
         elif self.args.scheduler == "inv_sqrt":
@@ -238,13 +293,11 @@ class GPTLightning(pl.LightningModule):
             scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
         else:
             raise NotImplementedError
-
         return [optimizer], [scheduler]
-
 
 class Trainer:
     def __init__(
-        self, model, logger, corpus, args, device,
+        self, model, logger, corpus, args, device, data_module=None,
     ):
         self.model = model
 
@@ -257,6 +310,9 @@ class Trainer:
         self.corpus = corpus
         self.log_start_time = time.time()
         self.eval_start_time = time.time()
+        if data_module:
+            self.train_dataloader = data_module.train_dataloader()
+            self.val_dataloader = data_module.val_dataloader()
 
     def configure_optimizers(self, model, args):
         if self.args.optim.lower() == "adam":

@@ -173,28 +173,14 @@ class WikiText2DataModule(pl.LightningDataModule):
             self.test_data = self.batchify(self.test_data, self.eval_batch_size)
 
     def train_dataloader(self):
-        if self.trainer.on_gpu and self.trainer.gpus > 1:
-            data = [
-                x
-                for i, x in enumerate(self.train_data)
-                if i % self.trainer.gpus == self.trainer.global_rank
-            ]
-        else:
-            data = self.train_data
+
+        data = self.train_data
         train_dataset = LMDataset(data, self.sequence_length, self.batch_size)
         data_loader = DataLoader(train_dataset, num_workers=24, batch_size=None)
         return data_loader
 
     def val_dataloader(self):
-        gpus = self.trainer.gpus
-        if self.trainer.on_gpu and self.trainer.gpus > 1:
-            data = [
-                x
-                for i, x in enumerate(self.val_data)
-                if i % self.trainer.gpus == self.trainer.global_rank
-            ]
-        else:
-            data = self.val_data
+        data = self.val_data
         val_dataset = LMDataset(data, self.sequence_length, self.batch_size)
 
         return DataLoader(val_dataset, num_workers=24, batch_size=None)
