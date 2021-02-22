@@ -52,7 +52,7 @@ class TokenizerIterator:
         self.document_iter = WebTextDocumentIterator(dataset_paths)
 
     def tokenize_doc(self, x):
-        tokenized = self.tokenizer(text=x, truncation=True).input_ids
+        tokenized = self.tokenizer(text=x[1], truncation=True).input_ids
         tokenized.append(self.tokenizer.eos_token_id)
 
         tokenized.insert(0, self.tokenizer.eos_token_id)
@@ -80,7 +80,7 @@ class BatchIterator:
 
     def collate_fn(self, batch):
         data_list, label_list, seq_len_list = [], [], []
-        for _data, _label, _seq in batch:
+        for _meta, _data, _label, _seq in batch:
             data_list.append(_data)
             label_list.append(_label)
             seq_len_list.append(_seq)

@@ -176,14 +176,14 @@ class WikiText2DataModule(pl.LightningDataModule):
 
         data = self.train_data
         train_dataset = LMDataset(data, self.sequence_length, self.batch_size)
-        data_loader = DataLoader(train_dataset, num_workers=24, batch_size=None)
+        data_loader = DataLoader(train_dataset, batch_size=None)
         return data_loader
 
     def val_dataloader(self):
         data = self.val_data
         val_dataset = LMDataset(data, self.sequence_length, self.batch_size)
 
-        return DataLoader(val_dataset, num_workers=24, batch_size=None)
+        return DataLoader(val_dataset, batch_size=None)
 
     def test_dataloader(self):
         if self.trainer.on_gpu and self.trainer.gpus > 1:
@@ -291,15 +291,15 @@ class OpenWebText2_V2_DataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         data_loader = DataLoader(
-            self.train_dataset, num_workers=24, batch_size=None, batch_sampler=None
+            self.train_dataset, batch_size=None, batch_sampler=None
         )
         return data_loader
 
     def val_dataloader(self):
 
         return DataLoader(
-            self.val_dataset, num_workers=24, batch_size=None, batch_sampler=None
+            self.val_dataset, batch_size=None, batch_sampler=None
         )
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, num_workers=24, batch_size=None)
+        return DataLoader(self.test_dataset, batch_size=None)

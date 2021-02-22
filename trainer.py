@@ -156,7 +156,7 @@ class GPTLightning(pl.LightningModule):
                 "loss": float_loss,
                 "ppl": math.exp(float_loss),
                 "bpc": (float_loss / math.log(2)),
-                "tokens": self.global_step * torch.sum(x_len).item(),
+                "tokens": self.global_step * torch.sum(x_len).item() * self.args.accumulate_grad_batches,
                 "lr": self.optimizers().param_groups[0]["lr"],
 
 
@@ -201,10 +201,10 @@ class GPTLightning(pl.LightningModule):
                 "validation_bpc": (loss / math.log(2)),
             },
             step=self.global_step,
-
         )
 
         return outputs[0]
+
     def validation_epoch_end(self, validation_step_outputs):
         epoch_metric = torch.mean(torch.stack([x for x in validation_step_outputs]))
         
@@ -217,7 +217,7 @@ class GPTLightning(pl.LightningModule):
             step=self.global_step,
 
         )
-        sentence_prefix = "I eat"
+        sentence_prefix = "I am"
  
         input_ids = self.tokenizer.encode(
             sentence_prefix,
@@ -274,8 +274,8 @@ class GPTLightning(pl.LightningModule):
             # because in previous versions eta_min is default to 0
             # rather than the default value of lr_min 1e-6
             scheduler = optim.lr_scheduler.CosineAnnealingLR(
-                optimizer, self.trainer.max_steps, eta_min=self.args.eta_min
-            )  # should use eta_min arg
+                optimizer, self.trainer.max_steps, eta_min=self.args.lr*.2
+            )
 
         elif self.args.scheduler == "inv_sqrt":
             # originally used for Transformer (in Attention is all you need)
@@ -531,7 +531,7 @@ class Trainer:
                                 "ppl": math.exp(cur_loss),
                                 "loss": cur_loss,
                                 "bpc": cur_loss / math.log(2),
-                                "tokens": (batch_idx + 1) * self.args.n_ctx,
+                                "tokens": (batch_idx + 1) * self.args.n_ctx * self.args.accumulate_grad_batches,
                                 "lr": optimizer.param_groups[0]["lr"],
                             },
                         )
