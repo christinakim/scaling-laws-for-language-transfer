@@ -20,13 +20,14 @@ def main(args):
         args.d_ff = config.d_ff
         args.d_attn = config.d_attn
     
-    args.accumulate_grad_batches = 512 // args.batch_size
+    args.accumulate_grad_batches = 1
+    #args.accumulate_grad_batches = 512 // args.batch_size
     # args.warmup_step = args.accumulate_grad_batches * args.warmup_step
 
     if args.d_embd < 0:
         args.d_embd = args.d_model
     
-    args.d_ff = args.d_embd * args.d_ff
+    # args.d_ff = args.d_embd * args.d_ff
 
     assert args.batch_size % args.batch_chunk == 0
 

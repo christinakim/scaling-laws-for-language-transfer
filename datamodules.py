@@ -97,7 +97,7 @@ class OpenWebText2DataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
         )
         data_loader = DataLoader(
-            train_dataset, num_workers=24, batch_size=None, sampler=None
+            train_dataset, batch_size=None, sampler=None
         )
         return data_loader
 
@@ -108,7 +108,7 @@ class OpenWebText2DataModule(pl.LightningDataModule):
             batch_size=self.eval_batch_size,
         )
 
-        data_loader = DataLoader(val_dataset, num_workers=24,batch_size=None, sampler=None,)
+        data_loader = DataLoader(val_dataset, batch_size=None, sampler=None,)
         return data_loader
 
     def test_dataloader(self):
@@ -117,7 +117,7 @@ class OpenWebText2DataModule(pl.LightningDataModule):
             seq_len=self.sequence_length,
             batch_size=self.eval_batch_size,
         )
-        return DataLoader(test_dataset, num_workers=24, batch_size=None, sampler=None)
+        return DataLoader(test_dataset, batch_size=None, sampler=None)
 
 
 class WikiText2DataModule(pl.LightningDataModule):

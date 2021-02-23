@@ -78,17 +78,6 @@ class BatchIterator:
         self.seq_len = seq_len
         self.tokenizer = tokenizer
 
-    def collate_fn(self, batch):
-        data_list, label_list, seq_len_list = [], [], []
-        for _meta, _data, _label, _seq in batch:
-            data_list.append(_data)
-            label_list.append(_label)
-            seq_len_list.append(_seq)
-        return (
-            torch.LongTensor(data_list).permute(1,0),
-            torch.LongTensor(label_list).permute(1,0),
-            torch.LongTensor(seq_len_list),
-        )
     def process_data(self, dataset):
         self.tokenizer_iter = TokenizerIterator(self.seq_len, self.tokenizer, [dataset])
         for x in self.tokenizer_iter:
@@ -139,8 +128,8 @@ class WebTextIter(IterableDataset):
             label_list.append(_label)
             seq_len_list.append(_seq)
         return (
-            torch.LongTensor(data_list).permute(1,0),
-            torch.LongTensor(label_list).permute(1,0),
+            torch.LongTensor(data_list),
+            torch.LongTensor(label_list),
             torch.LongTensor(seq_len_list),
         )
 
@@ -182,7 +171,6 @@ class LMOrderedIterator(IterableDataset):
         data = torch.LongTensor(self.data[beg_idx:end_idx])
         target = torch.LongTensor(self.data[i + 1 : i + 1 + seq_len])
 
-        print(data)
 
         return data, target, seq_len
 
