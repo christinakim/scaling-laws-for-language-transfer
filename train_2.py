@@ -20,8 +20,8 @@ def main(args):
         args.d_ff = config.d_ff
         args.d_attn = config.d_attn
     
-    args.accumulate_grad_batches = 1
-    #args.accumulate_grad_batches = 512 // args.batch_size
+    #args.accumulate_grad_batches = 1
+    args.accumulate_grad_batches = 512 // args.batch_size
     # args.warmup_step = args.accumulate_grad_batches * args.warmup_step
 
     if args.d_embd < 0:
@@ -82,8 +82,8 @@ if __name__ == "__main__":
     parser.add_argument("--d_embd", type=int, default=-1, help="embedding dimension")
     parser.add_argument("--d_model", type=int, default=500, help="model dimension")
     parser.add_argument("--d_ff", type=int, default=1000, help="inner dimension in FF")
-    parser.add_argument("--n_ctx", type=int, default=128, help="context length")
-    parser.add_argument("--n_positions", type=int, default=500, help="max seq length")
+    parser.add_argument("--n_ctx", type=int, default=1024, help="context length")
+    parser.add_argument("--n_positions", type=int, default=1024, help="max seq length")
     parser.add_argument(
         "--dropout", type=float, default=0.0, help="global dropout rate"
     )
@@ -124,8 +124,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--max_step", type=int, default=250000, help="upper step limit")
     parser.add_argument("--max_epoch", type=int, help="upper epoch limit")
-    parser.add_argument("--batch_size", type=int, default=32, help="batch size")
-    parser.add_argument("--eval_batch_size", type=int, default=32, help="batch size")
+    parser.add_argument("--batch_size", type=int, default=2, help="batch size")
+    parser.add_argument("--eval_batch_size", type=int, default=2, help="batch size")
     parser.add_argument(
         "--batch_chunk",
         type=int,

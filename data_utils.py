@@ -22,14 +22,13 @@ import numpy as np
 class WebTextDocumentIterator:
     def __init__(self, dataset_paths):
         self.dataset_paths = dataset_paths
-
-    def get_document(self, reader, path):
-        return reader.read_jsonl(path)
+        random.shuffle(self.dataset_paths)	
 
     def __iter__(self):
         reader = Reader()
         for path in self.dataset_paths:
-            yield from self.get_document(reader, path)
+            for i, x in enumerate(reader.read_jsonl(path)):
+                yield i, x
 
 
 class FileIterator:
@@ -51,22 +50,24 @@ class TokenizerIterator:
         self.tokenizer = tokenizer
         self.document_iter = WebTextDocumentIterator(dataset_paths)
 
-    def tokenize_doc(self, x):
-        tokenized = self.tokenizer(text=x[1], truncation=True).input_ids
-        tokenized.append(self.tokenizer.eos_token_id)
-
-        tokenized.insert(0, self.tokenizer.eos_token_id)
-        if len(tokenized) >= self.seq_len:
-            for i in range(len(tokenized) - self.seq_len):
-                yield tokenized[i : i + self.seq_len], tokenized[i + 1 : i + 1 + self.seq_len], len(
-                    tokenized[i : i + self.seq_len]
-                )
-        else:
-            pass
-
     def __iter__(self):
-        for x in self.document_iter:
-            yield from self.tokenize_doc(x)
+        for doc_i, x in self.document_iter:
+            tokenized = self.tokenizer(text=x[1],).input_ids
+            tokenized.append(self.tokenizer.eos_token_id)
+
+            tokenized.insert(0, self.tokenizer.eos_token_id)
+            tokenized_length = len(tokenized)
+            if tokenized_length >= self.seq_len:
+                for i in range(len(tokenized) - self.seq_len):
+                    block = tokenized[i:i+self.seq_len+1]
+                    yield block[:-1], block[1:], (x[0], doc_i, i)
+            # if len(tokenized) >= self.seq_len:
+            #     i = 0
+            #     while i <= len(tokenized) - self.seq_len:
+            #         yield tokenized[i : i + self.seq_len]
+            #         i += self.seq_len
+            else:
+                pass
 
 
 class BatchIterator:
@@ -77,17 +78,28 @@ class BatchIterator:
         self.drop_last = drop_last
         self.seq_len = seq_len
         self.tokenizer = tokenizer
+        self.tokenizer_iter = TokenizerIterator(self.seq_len, self.tokenizer, self.dataset_paths)
+
 
     def process_data(self, dataset):
         self.tokenizer_iter = TokenizerIterator(self.seq_len, self.tokenizer, [dataset])
+        batch = []
         for x in self.tokenizer_iter:
-            yield x
+            yield x 
+            # batch.append(x)
+            # if len(batch) == self.batch_size:
+            #     yield batch
+            #     batch = []
             
     def shuffled_data_list(self, i):
         #split = len(self.dataset_paths) // self.batch_size
         #dataset_paths = self.dataset_paths[(i*split):((i+1)*split)]
-        return random.sample(self.dataset_paths, len(self.dataset_paths))
-        
+        shuffled = random.sample(self.dataset_paths, len(self.dataset_paths))
+        for i in range(i):
+            shuffled = random.sample(shuffled, len(self.dataset_paths))
+
+
+        return shuffled
     
     def get_stream(self, data_list):
         return chain.from_iterable(map(self.process_data, cycle(data_list)))
@@ -97,7 +109,13 @@ class BatchIterator:
     
     def __iter__(self):
         return self.get_streams()
-
+        # batches = []
+        # batch = []
+        # for x in self.tokenizer_iter:
+        #     batch.append(x)
+        #     if len(batch) == self.batch_size:
+        #         yield batch
+        #         batch = []
 
 
 class WebTextIter(IterableDataset):
@@ -118,6 +136,7 @@ class WebTextIter(IterableDataset):
         try:
             for x in self.batch_iter:
                 yield self.collate_fn(x)
+                # yield torch.LongTensor(src), torch.LongTensor(target), meta
         except StopIteration:
             return
             
@@ -130,7 +149,7 @@ class WebTextIter(IterableDataset):
         return (
             torch.LongTensor(data_list),
             torch.LongTensor(label_list),
-            torch.LongTensor(seq_len_list),
+            seq_len_list,
         )
 
 class LMOrderedIterator(IterableDataset):

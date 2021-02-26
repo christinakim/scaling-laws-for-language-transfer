@@ -14,8 +14,8 @@ import torch.optim as optim
 import wandb
 from pytorch_lightning.loggers import WandbLogger
 from torch.nn.parallel.distributed import DistributedDataParallel
-from transformers import GPT2Config
-from transformers import GPT2LMHeadModel
+from transformers import OpenAIGPTConfig
+from transformers import OpenAIGPTLMHeadModel
 from transformers import GPT2Tokenizer
 
 from data_utils import get_lm_corpus
@@ -23,6 +23,18 @@ from datamodules import OpenWebText2DataModule
 from datamodules import WikiText2DataModule
 from utils.sample import sample_words
 from torch.nn import functional as F
+
+import os
+import pickle
+
+from transformers import GPT2Tokenizer
+
+PICKLE_FILE = '/datadrive/batches_9.pkl'
+
+
+def add_to_pickle(item, path=PICKLE_FILE):
+    with open(path, 'ab') as file:
+        pickle.dump(item, file, pickle.HIGHEST_PROTOCOL)
 
 
 def get_trainer(args):
@@ -51,9 +63,10 @@ def get_trainer(args):
     #     d_ff=args.d_ff,
     # )
     # model = GPT(configuration)
-    configuration = GPT2Config(
+    configuration = OpenAIGPTConfig(
         vocab_size=args.n_tokens,
         n_ctx=args.n_ctx,
+        n_positions=args.n_ctx,
         n_layer=args.n_layer,
         n_head=args.n_head,
         n_inner=args.d_ff,
@@ -61,7 +74,7 @@ def get_trainer(args):
     )
     
 
-    model = GPT2LMHeadModel(configuration)
+    model = OpenAIGPTLMHeadModel(configuration)
     args.n_all_param = sum([p.nelement() for p in model.parameters()])
     args.n_nonemb_param = sum(
         [p.nelement() for p in model.parameters() if p.requires_grad]
@@ -99,6 +112,7 @@ def get_trainer(args):
         )
     trainer.fit(gpt_pl, datamodule=data_module)
 
+# shuffle before shoving into the model 
 
 class GPTLightning(pl.LightningModule):
     def __init__(self, model, args):
@@ -117,7 +131,10 @@ class GPTLightning(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         # training_step defined the train loop. It is independent of forward
-        x, y, x_len = batch
+        #x, y, x_len = batch
+        src, target, _ = batch 
+
+        add_to_pickle(batch)
         # for item in x:
         #     a = self.tokenizer.decode(item)
         #     print(len(item))
@@ -130,7 +147,7 @@ class GPTLightning(pl.LightningModule):
         #         raise ValueError
         #     else:
         #         self.train_seen.append(a)
-        outputs = self.model(input_ids=x, labels=y)
+        outputs = self.model(input_ids=src, labels=target)
         loss = outputs[0]
         
         if batch_idx % self.args.accumulate_grad_batches == 0: 
@@ -156,7 +173,7 @@ class GPTLightning(pl.LightningModule):
                 "loss": float_loss,
                 "ppl": math.exp(float_loss),
                 "bpc": (float_loss / math.log(2)),
-                "tokens": self.global_step * torch.sum(x_len).item() * self.args.accumulate_grad_batches,
+                "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx * self.args.accumulate_grad_batches,
                 "lr": self.optimizers().param_groups[0]["lr"],
 
 
@@ -168,7 +185,7 @@ class GPTLightning(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, y, x_len = batch
+        # x, y, x_len = batch
         # for item in x:
         #     print(len(item))
 
@@ -181,7 +198,8 @@ class GPTLightning(pl.LightningModule):
         #         raise ValueError
         #     else:
         #         self.val_seen.append(a)
-        outputs = self.model(input_ids=x, labels=y)
+        src, target, meta = batch 
+        outputs = self.model(input_ids=src, labels=target)
         loss = outputs[0].item()
 
         # Add sync_dist=True to sync logging across all GPU workers

@@ -304,6 +304,6 @@ class Reader:
                     text = para_joiner.join(text)
 
                 if get_meta:
-                    yield text, (ob["meta"] if "meta" in ob else {})
+                    yield file, text, (ob["meta"] if "meta" in ob else {})
                 else:
-                    yield text
+                    yield file, text
