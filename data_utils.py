@@ -25,11 +25,14 @@ class WebTextDocumentIterator:
 
     def __iter__(self):
         reader = Reader()
+        doc_block = 20000
         documents = []
         for i, x in enumerate(reader.read_jsonl(self.dataset_path)):
             documents.append(x)
+            if len(documents) == doc_block:
+                yield documents
+                documents = []
         yield documents
-
 
 class FileIterator:
     def __init__(self, dataset_paths):
@@ -107,7 +110,7 @@ class BatchIterator:
         return chain.from_iterable(map(self.process_data, cycle(data_list)))
     
     def get_streams(self):
-        return zip(*[self.get_stream(self.shuffled_data_list(i)) for i in range(self.batch_size*256)])
+        return zip(*[self.get_stream(self.shuffled_data_list(i)) for i in range(len(self.dataset_paths))])
     
     def __iter__(self):
         return self.get_streams()
@@ -127,6 +130,7 @@ class WebTextIter(IterableDataset):
             tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
         self.seq_len = seq_len
         self.dataset_paths = dataset_paths
+        self.batch_size = batch_size
         self.batch_iter = BatchIterator(
             seq_len=seq_len,
             batch_size=batch_size,
@@ -137,8 +141,14 @@ class WebTextIter(IterableDataset):
 
     def __iter__(self):
         try:
-            for x in self.batch_iter:
-                yield self.collate_fn(x)
+            batch = []
+            for streams in self.batch_iter:
+                for sample in streams:
+                    if len(batch) == self.batch_size:
+                        yield self.collate_fn(batch)
+                        batch = []
+                    batch.append(sample)
+
                 # yield torch.LongTensor(src), torch.LongTensor(target), meta
         except StopIteration:
             return

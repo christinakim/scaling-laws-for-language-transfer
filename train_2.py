@@ -139,7 +139,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--log-interval", type=int, default=10, help="report interval")
     parser.add_argument(
-        "--eval_interval", type=int, default=10, help="evaluation interval"
+        "--eval_interval", type=int, default=512, help="evaluation interval"
     )
     parser.add_argument(
         "--work_dir", default="experiments", type=str, help="experiment directory."

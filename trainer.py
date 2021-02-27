@@ -144,6 +144,7 @@ class GPTLightning(pl.LightningModule):
         outputs = self.model(input_ids=src, labels=target)
         loss = outputs[0]
         
+<<<<<<< HEAD
 
         float_loss = loss.item()
         self.logger.experiment.log(
@@ -156,6 +157,38 @@ class GPTLightning(pl.LightningModule):
             },
             step=self.global_step,
         )
+=======
+        if batch_idx % self.args.accumulate_grad_batches == 0: 
+            opt = self.optimizers()
+            if self.trainer.global_step < self.args.warmup_step:
+                lr_scale = min(1., float(self.trainer.global_step + 1) / self.args.warmup_step)
+                for pg in opt.param_groups:
+                    pg['lr'] = lr_scale * self.args.lr
+        # self.log_metrics(
+        #     {
+        #         "loss": loss,
+        #         "ppl": math.exp(loss),
+        #         "bpc": (loss / math.log(2)),
+        #         "tokens": self.global_step * torch.sum(x_len).item(),
+        #     },
+        #     sync_dist=True,
+        #     on_step=True,
+        #     on_epoch=True,
+        # )
+            float_loss = loss.item()
+            self.logger.experiment.log(
+                {
+                    "loss": float_loss,
+                    "ppl": math.exp(float_loss),
+                    "bpc": (float_loss / math.log(2)),
+                    "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx * self.args.accumulate_grad_batches,
+                    "lr": self.optimizers().param_groups[0]["lr"],
+
+
+                },
+                step=self.global_step,
+            )
+>>>>>>> more shuffle
 
         
         return loss
