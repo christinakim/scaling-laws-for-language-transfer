@@ -8,23 +8,22 @@ if [[ $1 == 'train' ]]; then
         --dataset $2 \
         --model_size $3 \
         --n_positions 500 \
-        --n_ctx 256 \
+        --n_ctx 1024 \
         --n_layer 2 \
         --d_model 64 \
         --n_head 2 \
         --d_ff 4 \
-        --lr 0.0025 \
         --dropout 0.1 \
         --dropatt 0.0 \
         --optim adam \
-        --warmup_step 0 \
+        --warmup_step 500 \
         --max_step 50000 \
-        --batch_size 32 \
+        --batch_size 2 \
         --gpu0_bsz 1 \
         --eval_interval 100\
         --n_nodes 1 \
         --n_gpus 1  \
-        --eval_batch_size 5 \
+        --eval_batch_size 2 \
         --max_eval_steps 100 \
         --max_epoch 100
 

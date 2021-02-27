@@ -105,7 +105,7 @@ def get_trainer(args):
             gpus=args.n_gpus,
             logger=wandb_logger,
             gradient_clip_val=args.clip,
-            limit_val_batches=args.max_eval_steps * args.accumulate_grad_batches,
+            limit_val_batches=args.max_eval_steps,
             accumulate_grad_batches=args.accumulate_grad_batches,
             max_steps=args.max_step,
             enable_pl_optimizer=True,
