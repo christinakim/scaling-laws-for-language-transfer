@@ -9,14 +9,10 @@ if [[ $1 == 'train' ]]; then
         --model_size $3 \
         --n_positions 1024 \
         --n_ctx 1024 \
-        --n_layer 2 \
-        --d_model 64 \
-        --n_head 2 \
-        --d_ff 4 \
         --dropout 0.1 \
         --dropatt 0.0 \
         --optim adam \
-        --warmup_step 3000 \
+        --warmup_step 500 \
         --batch_size 2 \
         --gpu0_bsz 1 \
         --eval_interval 100 \
