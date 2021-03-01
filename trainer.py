@@ -28,12 +28,19 @@ from torch.nn import functional as F
 import os
 import pickle
 
+from datetime import datetime
+from pytz import timezone, utc
 from transformers import GPT2Tokenizer
 
 PICKLE_FILE = '/datadrive/batches_9.pkl'
 
-from datetime import datetime
 
+def get_pst_time():
+    date_format='%m_%d_%Y_%H_%M_%S_%Z'
+    date = datetime.now(tz=utc)
+    date = date.astimezone(timezone('US/Pacific'))
+    pstDateTime=date.strftime(date_format)
+    return pstDateTime
 
 def add_to_pickle(item, path=PICKLE_FILE):
     with open(path, 'ab') as file:
@@ -84,8 +91,8 @@ def get_trainer(args):
     )
     gpt_pl = GPTLightning(model=model, args=args)
 
-    now = datetime.now()
-    dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+    dt_string = get_pst_time()
+    
     run_name = "{}_{}_{}".format(args.dataset, args.model_size, dt_string)
     wandb_logger = WandbLogger(name=run_name, project=args.dataset, entity=args.entity)
 
@@ -144,20 +151,6 @@ class GPTLightning(pl.LightningModule):
         outputs = self.model(input_ids=src, labels=target)
         loss = outputs[0]
         
-<<<<<<< HEAD
-
-        float_loss = loss.item()
-        self.logger.experiment.log(
-            {
-                "loss": float_loss,
-                "ppl": math.exp(float_loss),
-                "bpc": (float_loss / math.log(2)),
-                "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx,
-                "lr": self.optimizers().param_groups[0]["lr"],
-            },
-            step=self.global_step,
-        )
-=======
         if batch_idx % self.args.accumulate_grad_batches == 0: 
             opt = self.optimizers()
             if self.trainer.global_step < self.args.warmup_step:
@@ -181,14 +174,13 @@ class GPTLightning(pl.LightningModule):
                     "loss": float_loss,
                     "ppl": math.exp(float_loss),
                     "bpc": (float_loss / math.log(2)),
-                    "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx * self.args.accumulate_grad_batches,
+                    "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx,
                     "lr": self.optimizers().param_groups[0]["lr"],
 
 
                 },
                 step=self.global_step,
             )
->>>>>>> more shuffle
 
         
         return loss
