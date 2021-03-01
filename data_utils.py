@@ -20,16 +20,19 @@ import numpy as np
 
 
 class WebTextDocumentIterator:
-    def __init__(self, dataset_paths):
-        self.dataset_paths = dataset_paths
-        random.shuffle(self.dataset_paths)	
+    def __init__(self, dataset_path):
+        self.dataset_path = dataset_path
 
     def __iter__(self):
         reader = Reader()
-        for path in self.dataset_paths:
-            for i, x in enumerate(reader.read_jsonl(path)):
-                yield i, x
-
+        doc_block = 20000
+        documents = []
+        for i, x in enumerate(reader.read_jsonl(self.dataset_path)):
+            documents.append(x)
+            if len(documents) == doc_block:
+                yield documents
+                documents = []
+        yield documents
 
 class FileIterator:
     def __init__(self, dataset_paths):
@@ -45,29 +48,35 @@ class FileIterator:
 
 
 class TokenizerIterator:
-    def __init__(self, seq_len, tokenizer, dataset_paths):
+    def __init__(self, seq_len, tokenizer, seed, dataset_path):
         self.seq_len = seq_len
         self.tokenizer = tokenizer
-        self.document_iter = WebTextDocumentIterator(dataset_paths)
+        self.document_iter = WebTextDocumentIterator(dataset_path)
+        self.seed = seed
 
     def __iter__(self):
-        for doc_i, x in self.document_iter:
-            tokenized = self.tokenizer(text=x[1],).input_ids
-            tokenized.append(self.tokenizer.eos_token_id)
+        block = []
+        for documents in self.document_iter:
+            random.Random(self.seed).shuffle(documents)
+            
+            
+            for doc_i, x in enumerate(documents):
+                tokenized = self.tokenizer(text=x[1],).input_ids
+                tokenized.append(self.tokenizer.eos_token_id)
 
-            tokenized.insert(0, self.tokenizer.eos_token_id)
-            tokenized_length = len(tokenized)
-            if tokenized_length >= self.seq_len:
-                for i in range(len(tokenized) - self.seq_len):
-                    block = tokenized[i:i+self.seq_len+1]
-                    yield block[:-1], block[1:], (x[0], doc_i, i)
-            # if len(tokenized) >= self.seq_len:
-            #     i = 0
-            #     while i <= len(tokenized) - self.seq_len:
-            #         yield tokenized[i : i + self.seq_len]
-            #         i += self.seq_len
-            else:
-                pass
+                tokenized.insert(0, self.tokenizer.eos_token_id)
+                tokenized_length = len(tokenized)
+                for token in tokenized:
+                    if len(block) == self.seq_len + 1:
+                        yield block[:-1], block[1:], (x[0], doc_i)
+                        block = []
+                    block.append(token)
+
+                # if len(tokenized) >= self.seq_len:
+                #     i = 0
+                #     while i <= len(tokenized) - self.seq_len:
+                #         yield tokenized[i : i + self.seq_len]
+                #         i += self.seq_len
 
 
 class BatchIterator:
@@ -78,12 +87,10 @@ class BatchIterator:
         self.drop_last = drop_last
         self.seq_len = seq_len
         self.tokenizer = tokenizer
-        self.tokenizer_iter = TokenizerIterator(self.seq_len, self.tokenizer, self.dataset_paths)
 
-
-    def process_data(self, dataset):
-        self.tokenizer_iter = TokenizerIterator(self.seq_len, self.tokenizer, [dataset])
-        batch = []
+    def process_data(self, seed_dataset):
+        seed, dataset = seed_dataset
+        self.tokenizer_iter = TokenizerIterator(self.seq_len, self.tokenizer, seed, dataset)
         for x in self.tokenizer_iter:
             yield x 
             # batch.append(x)
@@ -94,21 +101,20 @@ class BatchIterator:
     def shuffled_data_list(self, i):
         #split = len(self.dataset_paths) // self.batch_size
         #dataset_paths = self.dataset_paths[(i*split):((i+1)*split)]
-        shuffled = random.sample(self.dataset_paths, len(self.dataset_paths))
-        for i in range(i):
-            shuffled = random.sample(shuffled, len(self.dataset_paths))
-
-
-        return shuffled
+        shuffled = self.dataset_paths
+        # does not impact global seed
+        random.Random(i).shuffle(shuffled)
+        return [(i,x) for x in shuffled]
     
     def get_stream(self, data_list):
         return chain.from_iterable(map(self.process_data, cycle(data_list)))
     
     def get_streams(self):
-        return zip(*[self.get_stream(self.shuffled_data_list(i)) for i in range(self.batch_size)])
+        return zip(*[self.get_stream(self.shuffled_data_list(i)) for i in range(len(self.dataset_paths))])
     
     def __iter__(self):
         return self.get_streams()
+
         # batches = []
         # batch = []
         # for x in self.tokenizer_iter:
@@ -124,6 +130,7 @@ class WebTextIter(IterableDataset):
             tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
         self.seq_len = seq_len
         self.dataset_paths = dataset_paths
+        self.batch_size = batch_size
         self.batch_iter = BatchIterator(
             seq_len=seq_len,
             batch_size=batch_size,
@@ -134,8 +141,14 @@ class WebTextIter(IterableDataset):
 
     def __iter__(self):
         try:
-            for x in self.batch_iter:
-                yield self.collate_fn(x)
+            batch = []
+            for streams in self.batch_iter:
+                for sample in streams:
+                    if len(batch) == self.batch_size:
+                        yield self.collate_fn(batch)
+                        batch = []
+                    batch.append(sample)
+
                 # yield torch.LongTensor(src), torch.LongTensor(target), meta
         except StopIteration:
             return

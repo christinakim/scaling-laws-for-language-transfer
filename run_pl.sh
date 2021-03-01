@@ -7,24 +7,20 @@ if [[ $1 == 'train' ]]; then
         --data /datadrive/$2 \
         --dataset $2 \
         --model_size $3 \
-        --n_positions 500 \
+        --n_positions 1024 \
         --n_ctx 1024 \
-        --n_layer 2 \
-        --d_model 64 \
-        --n_head 2 \
-        --d_ff 4 \
         --dropout 0.1 \
         --dropatt 0.0 \
         --optim adam \
-        --warmup_step 500 \
-        --max_step 50000 \
+        --warmup_step 300 \
         --batch_size 512 \
+        --mini_batch_size 2 \
         --gpu0_bsz 1 \
-        --eval_interval 100\
+        --eval_interval 10 \
         --n_nodes 1 \
         --n_gpus 1  \
         --eval_batch_size 2 \
-        --max_eval_steps 100 \
+        --max_eval_steps 2 \
         --max_epoch 100
 
 elif [[ $1 == 'eval' ]]; then
