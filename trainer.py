@@ -19,6 +19,7 @@ from transformers import OpenAIGPTLMHeadModel
 from transformers import GPT2Tokenizer
 
 from data_utils import get_lm_corpus
+from optim_utils import GradualWarmupScheduler
 from datamodules import OpenWebText2DataModule
 from datamodules import WikiText2DataModule
 from utils.sample import sample_words
@@ -31,6 +32,8 @@ from transformers import GPT2Tokenizer
 
 PICKLE_FILE = '/datadrive/batches_9.pkl'
 
+from datetime import datetime
+
 
 def add_to_pickle(item, path=PICKLE_FILE):
     with open(path, 'ab') as file:
@@ -40,11 +43,11 @@ def add_to_pickle(item, path=PICKLE_FILE):
 def get_trainer(args):
     if args.dataset == "wikitext2":
         data_module = WikiText2DataModule(
-            sequence_length=args.n_ctx, batch_size=args.batch_size
+            sequence_length=args.n_ctx, batch_size=args.mini_batch_size
         )
     elif args.dataset == "openwebtext2":
         data_module = OpenWebText2DataModule(
-            sequence_length=args.n_ctx, batch_size=args.batch_size, eval_batch_size=args.eval_batch_size, data_dir=args.data
+            sequence_length=args.n_ctx, batch_size=args.mini_batch_size, eval_batch_size=args.eval_batch_size, data_dir=args.data
         )
     else:
         raise NotImplementedError
@@ -81,7 +84,9 @@ def get_trainer(args):
     )
     gpt_pl = GPTLightning(model=model, args=args)
 
-    run_name = "{}_{}".format(args.dataset, args.model_size)
+    now = datetime.now()
+    dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+    run_name = "{}_{}_{}".format(args.dataset, args.model_size, dt_string)
     wandb_logger = WandbLogger(name=run_name, project=args.dataset, entity=args.entity)
 
     if args.n_gpus > 1:
@@ -100,9 +105,9 @@ def get_trainer(args):
     else:
         print('no ddp')
         trainer = pl.Trainer(
-            val_check_interval=args.eval_interval,
+            val_check_interval=args.eval_interval * args.accumulate_grad_batches,
             weights_summary="full",
-            gpus=args.n_gpus,
+            gpus=[1],
             logger=wandb_logger,
             gradient_clip_val=args.clip,
             limit_val_batches=args.max_eval_steps,
@@ -131,52 +136,23 @@ class GPTLightning(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         # training_step defined the train loop. It is independent of forward
-        #x, y, x_len = batch
+
         src, target, _ = batch 
 
         add_to_pickle(batch)
-        # for item in x:
-        #     a = self.tokenizer.decode(item)
-        #     print(len(item))
-        #     print(a)
 
-        #     if a in self.train_seen:
-        #         print("OFFENDING {}".format(a))
-
-        #         print("BATCHES ARE {}".format(self.train_seen))
-        #         raise ValueError
-        #     else:
-        #         self.train_seen.append(a)
         outputs = self.model(input_ids=src, labels=target)
         loss = outputs[0]
         
-        if batch_idx % self.args.accumulate_grad_batches == 0: 
-            opt = self.optimizers()
-            if self.trainer.global_step < self.args.warmup_step:
-                lr_scale = min(1., float(self.trainer.global_step + 1) / self.args.warmup_step)
-                for pg in opt.param_groups:
-                    pg['lr'] = lr_scale * self.args.lr
-        # self.log_metrics(
-        #     {
-        #         "loss": loss,
-        #         "ppl": math.exp(loss),
-        #         "bpc": (loss / math.log(2)),
-        #         "tokens": self.global_step * torch.sum(x_len).item(),
-        #     },
-        #     sync_dist=True,
-        #     on_step=True,
-        #     on_epoch=True,
-        # )
+
         float_loss = loss.item()
         self.logger.experiment.log(
             {
                 "loss": float_loss,
                 "ppl": math.exp(float_loss),
                 "bpc": (float_loss / math.log(2)),
-                "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx * self.args.accumulate_grad_batches,
+                "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx,
                 "lr": self.optimizers().param_groups[0]["lr"],
-
-
             },
             step=self.global_step,
         )
@@ -288,12 +264,10 @@ class GPTLightning(pl.LightningModule):
 
         #### scheduler
         if self.args.scheduler == "cosine":
-            # here we do not set eta_min to lr_min to be backward compatible
-            # because in previous versions eta_min is default to 0
-            # rather than the default value of lr_min 1e-6
             scheduler = optim.lr_scheduler.CosineAnnealingLR(
                 optimizer, self.trainer.max_steps, eta_min=self.args.lr*.2
             )
+            scheduler = GradualWarmupScheduler(optimizer, self.args.warmup_step, after_scheduler=scheduler)
 
         elif self.args.scheduler == "inv_sqrt":
             # originally used for Transformer (in Attention is all you need)
@@ -309,9 +283,18 @@ class GPTLightning(pl.LightningModule):
                     )
 
             scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+            
         else:
             raise NotImplementedError
-        return [optimizer], [scheduler]
+        return [optimizer], [
+            {
+                'scheduler': scheduler,
+                'interval': 'step',
+                'frequency': 1,
+                'reduce_on_plateau': False,
+                'monitor': 'val_loss',
+            }
+        ]
 
 class Trainer:
     def __init__(

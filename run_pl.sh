@@ -18,7 +18,7 @@ if [[ $1 == 'train' ]]; then
         --optim adam \
         --warmup_step 500 \
         --max_step 50000 \
-        --batch_size 2 \
+        --batch_size 512 \
         --gpu0_bsz 1 \
         --eval_interval 100\
         --n_nodes 1 \
