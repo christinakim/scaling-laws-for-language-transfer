@@ -91,6 +91,7 @@ def get_trainer(args):
     )
     gpt_pl = GPTLightning(model=model, args=args)
 
+
     dt_string = get_pst_time()
     
     run_name = "{}_{}_{}".format(args.dataset, args.model_size, dt_string)
@@ -121,6 +122,7 @@ def get_trainer(args):
             accumulate_grad_batches=args.accumulate_grad_batches,
             max_steps=args.max_step,
             enable_pl_optimizer=True,
+            log_every_n_steps=args.accumulate_grad_batches,
         )
     trainer.fit(gpt_pl, datamodule=data_module)
 
@@ -151,54 +153,26 @@ class GPTLightning(pl.LightningModule):
         outputs = self.model(input_ids=src, labels=target)
         loss = outputs[0]
         
-        if batch_idx % self.args.accumulate_grad_batches == 0: 
-            opt = self.optimizers()
-            if self.trainer.global_step < self.args.warmup_step:
-                lr_scale = min(1., float(self.trainer.global_step + 1) / self.args.warmup_step)
-                for pg in opt.param_groups:
-                    pg['lr'] = lr_scale * self.args.lr
-        # self.log_metrics(
-        #     {
-        #         "loss": loss,
-        #         "ppl": math.exp(loss),
-        #         "bpc": (loss / math.log(2)),
-        #         "tokens": self.global_step * torch.sum(x_len).item(),
-        #     },
-        #     sync_dist=True,
-        #     on_step=True,
-        #     on_epoch=True,
-        # )
-            float_loss = loss.item()
-            self.logger.experiment.log(
-                {
-                    "loss": float_loss,
-                    "ppl": math.exp(float_loss),
-                    "bpc": (float_loss / math.log(2)),
-                    "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx,
-                    "lr": self.optimizers().param_groups[0]["lr"],
+
+        float_loss = loss.item()
+        self.logger.experiment.log(
+            {
+                "loss": float_loss,
+                "ppl": math.exp(float_loss),
+                "bpc": (float_loss / math.log(2)),
+                "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx,
+                "lr": self.optimizers().param_groups[0]["lr"],
 
 
-                },
-                step=self.global_step,
-            )
+            },
+            step=self.global_step,
+        )
 
         
-        return loss
+        return {"loss": loss}
 
     def validation_step(self, batch, batch_idx):
-        # x, y, x_len = batch
-        # for item in x:
-        #     print(len(item))
 
-        #     a = self.tokenizer.decode(item)
-        #     print(a)
-
-        #     if a in self.val_seen:
-        #         print("OFFENDING {}".format(a))
-        #         print("BATCHES ARE {}".format(self.val_seen))
-        #         raise ValueError
-        #     else:
-        #         self.val_seen.append(a)
         src, target, meta = batch 
         outputs = self.model(input_ids=src, labels=target)
         loss = outputs[0].item()
@@ -218,20 +192,24 @@ class GPTLightning(pl.LightningModule):
                 "validation_loss": loss,
                 "validation_ppl": math.exp(loss),
                 "validation_bpc": (loss / math.log(2)),
+                "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx
+
             },
             step=self.global_step,
         )
 
-        return outputs[0]
+        return {"val_loss": outputs[0]}
 
     def validation_epoch_end(self, validation_step_outputs):
-        epoch_metric = torch.mean(torch.stack([x for x in validation_step_outputs]))
+        epoch_metric = torch.mean(torch.stack([x["val_loss"] for x in validation_step_outputs]))
         
         self.logger.experiment.log(
             {
                 "validation_avg_loss": epoch_metric.item(),
                 "validation_avg_ppl": math.exp(epoch_metric.item()),
                 "validation_avg_bpc": (epoch_metric.item() / math.log(2)),
+                "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx
+
             },
             step=self.global_step,
 
@@ -289,10 +267,10 @@ class GPTLightning(pl.LightningModule):
 
         #### scheduler
         if self.args.scheduler == "cosine":
-            scheduler = optim.lr_scheduler.CosineAnnealingLR(
-                optimizer, self.trainer.max_steps, eta_min=self.args.lr*.2
+            cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, self.trainer.max_steps//self.args.batch_size , eta_min=self.args.lr*.2
             )
-            scheduler = GradualWarmupScheduler(optimizer, self.args.warmup_step, after_scheduler=scheduler)
+            scheduler = GradualWarmupScheduler(optimizer, self.args.warmup_step, after_scheduler=cosine_scheduler)
 
         elif self.args.scheduler == "inv_sqrt":
             # originally used for Transformer (in Attention is all you need)

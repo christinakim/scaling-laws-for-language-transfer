@@ -12,10 +12,11 @@ if [[ $1 == 'train' ]]; then
         --dropout 0.1 \
         --dropatt 0.0 \
         --optim adam \
-        --warmup_step 500 \
-        --batch_size 2 \
+        --warmup_step 300 \
+        --batch_size 512 \
+        --mini_batch_size 2 \
         --gpu0_bsz 1 \
-        --eval_interval 100 \
+        --eval_interval 10 \
         --n_nodes 1 \
         --n_gpus 1  \
         --eval_batch_size 2 \

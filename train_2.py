@@ -20,16 +20,13 @@ def main(args):
         args.d_ff = config.d_ff
         args.d_attn = config.d_attn
     
-    #args.accumulate_grad_batches = 1
     args.accumulate_grad_batches = args.batch_size // args.mini_batch_size
-    # args.warmup_step = args.accumulate_grad_batches * args.warmup_step
 
     if args.d_embd < 0:
         args.d_embd = args.d_model
     
-    # args.d_ff = args.d_embd * args.d_ff
 
-    assert args.batch_size % args.batch_chunk == 0
+    assert args.batch_size % args.mini_batch_size == 0
 
     print(args)
     # Set the random seed manually for reproducibility.
@@ -108,7 +105,7 @@ if __name__ == "__main__":
         help="lr scheduler to use.",
     )
     parser.add_argument(
-        "--warmup_step", type=int, default=500, help="upper epoch limit"
+        "--warmup_step", type=int, default=2, help="upper epoch limit"
     )
     parser.add_argument(
         "--lr_min",
@@ -122,7 +119,7 @@ if __name__ == "__main__":
         action="store_true",
         help="only clip the gradient of non-embedding params",
     )
-    parser.add_argument("--max_step", type=int, default=250000, help="upper step limit")
+    parser.add_argument("--max_step", type=int, default=25000, help="upper step limit")
     parser.add_argument("--max_epoch", type=int, help="upper epoch limit")
     parser.add_argument("--batch_size", type=int, default=512, help="batch size")
     parser.add_argument("--mini_batch_size", type=int, default=2, help="batch size")
