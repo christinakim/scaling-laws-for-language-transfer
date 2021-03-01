@@ -10,9 +10,6 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import wandb
-from transformers import GPT2Config
-from transformers import GPT2LMHeadModel
-from datamodules import OpenWebText2DataModule
 
 from data_utils import get_lm_corpus
 from gpt import GPT
@@ -56,12 +53,12 @@ def main(args):
             )
         else:
             torch.cuda.manual_seed_all(args.seed)
+
     device = torch.device("cuda" if args.cuda else "cpu")
 
     world_size = args.n_gpus
     args.lr = args.lr
-    if world_size > 0:
-        args.batch_size = args.batch_size // world_size
+    args.batch_size = args.batch_size // world_size
 
     ###############################################################################
     # Load data
@@ -73,26 +70,20 @@ def main(args):
         args.regex = corpus.regex
         regex_compiled = re.compile(str(args.regex))
 
-    # eval_batch_size = 5
+    eval_batch_size = 5
 
     ###############################################################################
     # Build the model
     ###############################################################################
-    configuration = GPT2Config(
+    configuration = GPTConfig(
         vocab_size=args.n_tokens,
-        n_ctx=args.n_ctx,
+        context_length=args.n_ctx,
+        n_embd=args.d_embd,
         n_layer=args.n_layer,
         n_head=args.n_head,
-        n_inner=args.d_ff,
+        d_ff=args.d_ff,
     )
-    model = GPT2LMHeadModel(configuration)
-    data_module = OpenWebText2DataModule(
-            sequence_length=args.n_ctx, batch_size=args.batch_size, eval_batch_size=args.eval_batch_size, data_dir=args.data
-        )
-    data_module.prepare_data()
-    data_module.setup("fit")
-    ntokens = len(data_module.vocab)
-    args.n_tokens = ntokens
+    model = GPT(configuration)
 
     args.n_all_param = sum([p.nelement() for p in model.parameters()])
     args.n_nonemb_param = sum(
@@ -119,14 +110,11 @@ def main(args):
 
     # At any point you can hit Ctrl + C to break out of training early.
     trainer = Trainer(
-        model=model, logger=logger, corpus=corpus, args=args, device=device, data_module=data_module,
+        model=model, logger=logger, corpus=corpus, args=args, device=device,
     )
     try:
-        if world_size > 0:
-            logger("spawning {} processes".format(world_size))
-            mp.spawn(trainer.train, args=(world_size,), nprocs=world_size, join=True)
-        else:
-            trainer.train(0, 1)
+        mp.spawn(trainer.train, args=(world_size,), nprocs=world_size, join=True)
+
     except KeyboardInterrupt:
         dist.destroy_process_group()
         logger("-" * 100)
@@ -165,11 +153,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data",
         type=str,
-        default="/Users/christina/openai-scholars/openwebtext2",
+        default="../data/wikitext-103",
         help="location of the data corpus",
     )
     parser.add_argument(
-        "--dataset", type=str, default="openwebtext2", help="dataset name"
+        "--dataset", type=str, default="wikitext-103", help="dataset name"
     )
     parser.add_argument(
         "--model_size",
@@ -189,7 +177,6 @@ if __name__ == "__main__":
             "large",
         ],
         help="model size",
-        default="small",
     )
     parser.add_argument(
         "--n_layer", type=int, default=12, help="number of total layers"
@@ -253,7 +240,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--log-interval", type=int, default=10, help="report interval")
     parser.add_argument(
-        "--eval_interval", type=int, default=10, help="evaluation interval"
+        "--eval_interval", type=int, default=1000, help="evaluation interval"
     )
     parser.add_argument(
         "--work_dir", default="experiments", type=str, help="experiment directory."
@@ -279,7 +266,7 @@ if __name__ == "__main__":
         help="min learning rate for cosine scheduler",
     )
     parser.add_argument("--gpu0_bsz", type=int, default=-1, help="batch size on gpu 0")
-    parser.add_argument("--max_eval_steps", type=int, default=10, help="max eval steps")
+    parser.add_argument("--max_eval_steps", type=int, default=-1, help="max eval steps")
     parser.add_argument(
         "--sample_softmax",
         type=int,
@@ -297,9 +284,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--entity", type=str, default="openai-scholars")
     parser.add_argument("--n_val_stop", type=int, default=3)
-    parser.add_argument("--eval_batch_size", type=int, default=3)
     parser.add_argument("--n_nodes", default=1, type=int, metavar="N")
-    parser.add_argument("--n_gpus", default=0, type=int, help="number of gpus per node")
+    parser.add_argument("--n_gpus", default=1, type=int, help="number of gpus per node")
     parser.add_argument("--nr", default=0, type=int, help="ranking within the nodes")
     args = parser.parse_args()
     main(args)

@@ -1,22 +1,79 @@
+import datetime
+import io
+import json
 import os
-import glob
-from pathlib import Path
+import random
+from itertools import chain
+from itertools import cycle
 
+import jsonlines
 import torch
-from tokenizers import ByteLevelBPETokenizer
-from torch.utils.data.dataloader import DataLoader
+import zstandard
 from torch.utils.data.dataset import IterableDataset
 from transformers import GPT2Tokenizer
 
-from utils.vocabulary import Reader
-from utils.vocabulary import Vocab
-import random
-from itertools import chain, cycle, islice
-import torch.utils.data as data
 
-import time
-import torch
-import numpy as np
+# from openwebtext2 https://github.com/EleutherAI/openwebtext2/blob/master/utils/archiver.py
+def json_serial(obj):
+    """JSON serializer for objects not serializable by default json code"""
+
+    if isinstance(obj, (datetime.datetime,)):
+        return obj.isoformat()
+    raise TypeError("Type %s not serializable" % type(obj))
+
+
+class Archive:
+    def __init__(self, file_path, compression_level=3):
+        self.file_path = file_path
+        dir_name = os.path.dirname(file_path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+        self.fh = open(self.file_path, "wb")
+        self.cctx = zstandard.ZstdCompressor(level=compression_level)
+        self.compressor = self.cctx.stream_writer(self.fh)
+
+    def add_data(self, data, meta={}):
+        self.compressor.write(
+            json.dumps({"text": data, "meta": meta}, default=json_serial).encode(
+                "UTF-8"
+            )
+            + b"\n"
+        )
+
+    def commit(self):
+        self.compressor.flush(zstandard.FLUSH_FRAME)
+        self.fh.flush()
+        self.fh.close()
+
+
+class Reader:
+    def __init__(self):
+        pass
+
+    def read_jsonl(
+        self, file, get_meta=False, autojoin_paragraphs=True, para_joiner="\n\n"
+    ):
+        with open(file, "rb") as fh:
+            self.fh = fh
+            cctx = zstandard.ZstdDecompressor()
+            reader = io.BufferedReader(cctx.stream_reader(fh))
+            rdr = jsonlines.Reader(reader)
+            for ob in rdr:
+                # naive jsonl where each object is just the string itself, with no meta. For legacy compatibility.
+                if isinstance(ob, str):
+                    assert not get_meta
+                    yield ob
+                    continue
+
+                text = ob["text"]
+
+                if autojoin_paragraphs and isinstance(text, list):
+                    text = para_joiner.join(text)
+
+                if get_meta:
+                    yield file, text, (ob["meta"] if "meta" in ob else {})
+                else:
+                    yield file, text
 
 
 class WebTextDocumentIterator:
@@ -25,14 +82,15 @@ class WebTextDocumentIterator:
 
     def __iter__(self):
         reader = Reader()
-        doc_block = 20000
+        doc_chunk_size = 20000
         documents = []
         for i, x in enumerate(reader.read_jsonl(self.dataset_path)):
             documents.append(x)
-            if len(documents) == doc_block:
+            if len(documents) == doc_chunk_size:
                 yield documents
                 documents = []
         yield documents
+
 
 class FileIterator:
     def __init__(self, dataset_paths):
@@ -58,8 +116,7 @@ class TokenizerIterator:
         block = []
         for documents in self.document_iter:
             random.Random(self.seed).shuffle(documents)
-            
-            
+
             for doc_i, x in enumerate(documents):
                 tokenized = self.tokenizer(text=x[1],).input_ids
                 tokenized.append(self.tokenizer.eos_token_id)
@@ -90,28 +147,35 @@ class BatchIterator:
 
     def process_data(self, seed_dataset):
         seed, dataset = seed_dataset
-        self.tokenizer_iter = TokenizerIterator(self.seq_len, self.tokenizer, seed, dataset)
+        self.tokenizer_iter = TokenizerIterator(
+            self.seq_len, self.tokenizer, seed, dataset
+        )
         for x in self.tokenizer_iter:
-            yield x 
+            yield x
             # batch.append(x)
             # if len(batch) == self.batch_size:
             #     yield batch
             #     batch = []
-            
+
     def shuffled_data_list(self, i):
-        #split = len(self.dataset_paths) // self.batch_size
-        #dataset_paths = self.dataset_paths[(i*split):((i+1)*split)]
+        # split = len(self.dataset_paths) // self.batch_size
+        # dataset_paths = self.dataset_paths[(i*split):((i+1)*split)]
         shuffled = self.dataset_paths
         # does not impact global seed
         random.Random(i).shuffle(shuffled)
-        return [(i,x) for x in shuffled]
-    
+        return [(i, x) for x in shuffled]
+
     def get_stream(self, data_list):
         return chain.from_iterable(map(self.process_data, cycle(data_list)))
-    
+
     def get_streams(self):
-        return zip(*[self.get_stream(self.shuffled_data_list(i)) for i in range(len(self.dataset_paths))])
-    
+        return zip(
+            *[
+                self.get_stream(self.shuffled_data_list(i))
+                for i in range(len(self.dataset_paths))
+            ]
+        )
+
     def __iter__(self):
         return self.get_streams()
 
@@ -125,7 +189,9 @@ class BatchIterator:
 
 
 class WebTextIter(IterableDataset):
-    def __init__(self, batch_size, dataset_paths, seq_len, tokenizer=None, drop_last=True):
+    def __init__(
+        self, batch_size, dataset_paths, seq_len, tokenizer=None, drop_last=True
+    ):
         if tokenizer is None:
             tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
         self.seq_len = seq_len
@@ -149,10 +215,9 @@ class WebTextIter(IterableDataset):
                         batch = []
                     batch.append(sample)
 
-                # yield torch.LongTensor(src), torch.LongTensor(target), meta
         except StopIteration:
             return
-            
+
     def collate_fn(self, batch):
         data_list, label_list, seq_len_list = [], [], []
         for _data, _label, _seq in batch:
@@ -164,256 +229,3 @@ class WebTextIter(IterableDataset):
             torch.LongTensor(label_list),
             seq_len_list,
         )
-
-class LMOrderedIterator(IterableDataset):
-    def __init__(self, data, length, bsz, bptt=None, device="cpu"):
-        """
-            data -- LongTensor -- the LongTensor is strictly ordered
-        """
-        self.bsz = bsz
-        self.len = length
-        self.bptt = bptt if bptt else bsz
-
-        self.device = device
-
-        # Work out how cleanly we can divide the dataset into bsz parts.
-        self.n_step = data.size(0) // bsz
-        self.data = data
-
-        # Trim off any extra elements that wouldn't cleanly fit (remainders).
-        data = data.narrow(0, 0, self.n_step * bsz)
-
-        # Evenly divide the data across the bsz batches.
-        self.data = data.view(bsz, -1).t().contiguous().to(device)
-
-        # Number of mini-batches
-        # self.n_batch = (self.n_step + self.bptt - 1) // self.bptt
-
-    def __len__(self):
-        return self.len
-
-    def get_batch(self, i, bptt=None):
-        if bptt is None:
-            bptt = self.bptt
-        seq_len = self.data.size(0) - 1 - i
-
-        end_idx = i + seq_len
-        beg_idx = i
-
-        data = torch.LongTensor(self.data[beg_idx:end_idx])
-        target = torch.LongTensor(self.data[i + 1 : i + 1 + seq_len])
-
-
-        return data, target, seq_len
-
-    def get_fixlen_iter(self, start=0):
-        for i in range(start, self.data.size(0) - 1, self.bptt):
-            yield self.get_batch(start)
-
-    def __iter__(self):
-        return self.get_fixlen_iter()
-
-
-class Corpus(object):
-    def __init__(self, path, dataset, *args, **kwargs):
-        self.dataset = dataset
-        self.vocab = Vocab(*args, **kwargs)
-
-        if self.dataset in ["ptb", "wikitext-2", "enwik8", "text8"]:
-            self.vocab.count_file(os.path.join(path, "train.txt"))
-            self.vocab.count_file(os.path.join(path, "valid.txt"))
-            self.vocab.count_file(os.path.join(path, "test.txt"))
-        elif self.dataset == "wikitext-103":
-            self.vocab.count_file(os.path.join(path, "train.txt"))
-        elif "states" in self.dataset:
-            info_file = os.path.join(path, "info.txt")
-            with open(info_file) as f:
-                first_line = f.readline().strip()
-                self.regex = first_line.replace("regex=", "")
-            f.close()
-
-            self.vocab.count_file(os.path.join(path, "0_shard_shuff.txt"))
-            self.vocab.count_file(os.path.join(path, "1_shard_shuff.txt"))
-            self.vocab.count_file(os.path.join(path, "2_shard_shuff.txt"))
-        elif self.dataset == "openwebtext2":
-            files = glob.glob(os.path.join(path + "/shards", "*"))
-            train_paths = files[:80]
-            valid_paths = files[80:90]
-            test_paths = files[90:]
-
-        self.vocab.build_vocab()
-
-        if self.dataset in ["ptb", "wikitext-2", "wikitext-103"]:
-            self.train = self.vocab.encode_file(
-                os.path.join(path, "train.txt"), ordered=True
-            )
-            self.valid = self.vocab.encode_file(
-                os.path.join(path, "valid.txt"), ordered=True
-            )
-            self.test = self.vocab.encode_file(
-                os.path.join(path, "test.txt"), ordered=True
-            )
-        elif self.dataset in ["enwik8", "text8", "simple_wiki"]:
-            self.train = self.vocab.encode_file(
-                os.path.join(path, "train.txt"), ordered=True, add_eos=False
-            )
-            self.valid = self.vocab.encode_file(
-                os.path.join(path, "valid.txt"), ordered=True, add_eos=False
-            )
-            self.test = self.vocab.encode_file(
-                os.path.join(path, "test.txt"), ordered=True, add_eos=False
-            )
-        elif "states" in self.dataset:
-            self.train = self.vocab.encode_file(
-                os.path.join(path, "0_shard_shuff.txt"),
-                ordered=True,
-                add_bos_and_eos=True,
-            )
-            self.valid = self.vocab.encode_file(
-                os.path.join(path, "1_shard_shuff.txt"),
-                ordered=True,
-                add_bos_and_eos=True,
-            )
-            self.test = self.vocab.encode_file(
-                os.path.join(path, "2_shard_shuff.txt"),
-                ordered=True,
-                add_bos_and_eos=True,
-            )
-        elif "openwebtext2":
-            self.train = train_paths
-            self.valid = valid_paths
-            self.test = test_paths
-
-    def get_iterator(self, rank, world_size, split, batch_size, n_ctx, *args, **kwargs):
-        if split == "train":
-            if self.dataset in [
-                "ptb",
-                "wikitext-2",
-                "wikitext-103",
-                "enwik8",
-                "text8",
-            ]:
-                data_iter = LMOrderedIterator(
-                    self.train, len(self.train), batch_size, *args, **kwargs
-                )
-            elif "states" in self.dataset:
-                data_iter = LMOrderedIterator(
-                    self.train, len(self.train), batch_size, n_ctx, *args, **kwargs
-                )
-            elif self.dataset == "openwebtext2":
-                n_partition = [
-                    n for i, n in enumerate(self.train) if i % world_size == rank
-                ]
-                print("train partitions {}_{}".format(rank, len(n_partition)))
-
-                dataset = WebTextIter(
-                    batch_size=batch_size,
-                    drop_last=True,
-                    dataset_paths=n_partition,
-                    seq_len=n_ctx,
-                )
-                return dataset
-
-        elif split in ["valid", "test"]:
-            data = self.valid if split == "valid" else self.test
-            if (
-                self.dataset
-                in ["ptb", "wikitext-2", "wikitext-103", "enwik8", "text8",]
-                or "states" in self.dataset
-            ):
-                data_iter = LMOrderedIterator(
-                    data, len(data), batch_size, n_ctx, *args, **kwargs
-                )
-            elif self.dataset == "openwebtext2":
-                # data_iter = ConcatDataset(
-                #     [
-                #         WebTextDataset(data[i], n_ctx, self.vocab, *args, **kwargs)
-                #         for i in range(len(data))
-                #     ]
-                # )
-                print("eval partitions {}_{}".format(rank, len(data)))
-
-                dataset = WebTextIter(
-                    batch_size=batch_size,
-                    drop_last=True,
-                    dataset_paths=data,
-                    seq_len=n_ctx,
-                )
-
-                return dataset
-
-        dataloader = DataLoader(data_iter, batch_size=None, shuffle=False,)
-        return dataloader
-
-
-def get_lm_corpus(datadir, dataset):
-    fn = os.path.join(datadir, "cache.pt")
-    if os.path.exists(fn):
-        print("Loading cached dataset...")
-        corpus = torch.load(fn)
-    else:
-        print("Producing dataset {}...".format(dataset))
-        kwargs = {}
-        if dataset in ["wikitext-103", "wikitext-2"]:
-            kwargs["special"] = ["<eos>"]
-            kwargs["lower_case"] = False
-        elif dataset == "ptb":
-            kwargs["special"] = ["<unk>", "<eos>"]
-            kwargs["lower_case"] = True
-        elif dataset == "lm1b":
-            kwargs["special"] = []
-            kwargs["lower_case"] = False
-            kwargs["vocab_file"] = os.path.join(datadir, "1b_word_vocab.txt")
-        elif dataset in ["enwik8", "text8"]:
-            pass
-        elif dataset == "simple_wiki":
-            kwargs["special"] = ["<eos>", "<bos>"]
-            kwargs["delimiter"] = "\n"
-        elif "states" in dataset:
-            kwargs["special"] = ["<eos>", "<bos>"]
-            kwargs["delimiter"] = ""
-            kwargs["vocab_file"] = os.path.join(datadir, "vocab.txt")
-        elif dataset == "openwebtext2":
-            tokenizer = ByteLevelBPETokenizer().from_file(
-                vocab_filename=datadir + "/gpt2-vocab.json",
-                merges_filename=datadir + "/gpt2-merges.txt",
-            )
-
-            kwargs["tokenizer"] = tokenizer
-            kwargs["vocab_file"] = os.path.join(datadir, "gpt2-vocab.json")
-
-        corpus = Corpus(datadir, dataset, **kwargs)
-        # torch.save(corpus, fn)
-
-    return corpus
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="unit test")
-    parser.add_argument(
-        "--datadir",
-        type=str,
-        default="/datadrive/openwebtext2",
-        help="location of the data corpus",
-    )
-    parser.add_argument(
-        "--dataset",
-        type=str,
-        default="openwebtext2",
-        choices=[
-            "ptb",
-            "wikitext-2",
-            "wikitext-103",
-            "lm1b",
-            "enwik8",
-            "text8",
-            "openwebtext2",
-        ],
-        help="dataset name",
-    )
-    args = parser.parse_args()
-
-    corpus = get_lm_corpus(args.datadir, args.dataset)
-    print("Vocab size : {}".format(len(corpus.vocab.idx2sym)))

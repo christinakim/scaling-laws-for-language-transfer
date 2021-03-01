@@ -1,14 +1,28 @@
 # coding: utf-8
 import argparse
+import math
+import os
+import re
+import time
 
 import numpy as np
 import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
+import wandb
+from transformers import GPT2Config
+from transformers import GPT2LMHeadModel
 
+from data_utils import get_lm_corpus
+from gpt import GPT
+from gpt import GPTConfig
 from gpt import common_models_by_name
-from trainer import get_trainer
+from trainer import Trainer
+from utils.exp_utils import create_exp_dir
 
 
 def main(args):
+
     if args.model_size:
         print("model config of size {}".format(args.model_size))
         config = common_models_by_name.get(args.model_size)
@@ -20,26 +34,119 @@ def main(args):
         args.d_ff = config.d_ff
         args.d_attn = config.d_attn
 
-    args.accumulate_grad_batches = args.batch_size // args.mini_batch_size
-
     if args.d_embd < 0:
         args.d_embd = args.d_model
 
-    assert args.batch_size % args.mini_batch_size == 0
+    assert args.batch_size % args.batch_chunk == 0
+    args.work_dir = "{}-{}".format(args.work_dir, args.dataset)
+    args.work_dir = os.path.join(args.work_dir, time.strftime("%Y%m%d-%H%M%S"))
+    logger = create_exp_dir(
+        args.work_dir, scripts_to_save=["train.py",], debug=args.debug,
+    )
 
-    print(args)
     # Set the random seed manually for reproducibility.
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
+    if torch.cuda.is_available():
+        if not args.cuda:
+            print(
+                "WARNING: You have a CUDA device, so you should probably run with --cuda"
+            )
+        else:
+            torch.cuda.manual_seed_all(args.seed)
+    device = torch.device("cuda" if args.cuda else "cpu")
+
+    world_size = args.n_gpus
+    args.lr = args.lr
+    args.batch_size = args.batch_size // world_size
+
+    ###############################################################################
+    # Load data
+    ###############################################################################
+    corpus = get_lm_corpus(args.data, args.dataset)
+    ntokens = len(corpus.vocab)
+    args.n_tokens = ntokens
+    if "states" in args.dataset:
+        args.regex = corpus.regex
+        regex_compiled = re.compile(str(args.regex))
+
+    # eval_batch_size = 5
+
+    ###############################################################################
+    # Build the model
+    ###############################################################################
+    configuration = GPT2Config(
+        vocab_size=args.n_tokens,
+        n_ctx=args.n_ctx,
+        n_layer=args.n_layer,
+        n_head=args.n_head,
+        n_inner=args.d_ff,
+    )
+    model = GPT2LMHeadModel(configuration)
+
+    args.n_all_param = sum([p.nelement() for p in model.parameters()])
+    args.n_nonemb_param = sum(
+        [p.nelement() for p in model.parameters() if p.requires_grad]
+    )
+
+    if args.restart:
+        if os.path.exists(os.path.join(args.restart_dir, "optimizer.pt")):
+            with open(os.path.join(args.restart_dir, "optimizer.pt"), "rb") as f:
+                opt_state_dict = torch.load(f)
+                optimizer.load_state_dict(opt_state_dict)
+        else:
+            print("Optimizer was not saved. Start from scratch.")
+
+    logger("=" * 100)
+    for k, v in args.__dict__.items():
+        logger("    - {} : {}".format(k, v))
+    logger("=" * 100)
+    logger("#params = {}".format(args.n_all_param))
+    logger("#non emb params = {}".format(args.n_nonemb_param))
     ###############################################################################
     # Training code
     ###############################################################################
+
+    # At any point you can hit Ctrl + C to break out of training early.
+    trainer = Trainer(
+        model=model, logger=logger, corpus=corpus, args=args, device=device,
+    )
     try:
-        get_trainer(args)
+        logger("spawning {} processes".format(world_size))
+        mp.spawn(trainer.train, args=(world_size,), nprocs=world_size, join=True)
 
     except KeyboardInterrupt:
-        print("YOOO")
+        dist.destroy_process_group()
+        logger("-" * 100)
+        logger("Exiting from training early")
+
+    # Load the best saved model.
+
+    with open(os.path.join(args.work_dir, "model.pt"), "rb") as f:
+        loaded_model = torch.load(f)
+    model = loaded_model.to(device)
+
+    # Run on test data.
+    test_iter = corpus.get_iterator(0, 1, "test", args.batch_size, args.n_ctx,)
+    test_loss, test_tokens = trainer.test(model, test_iter)
+    logger("=" * 100)
+    logger(
+        "| End of training | test loss {:5.2f} | test bpc {:9.5f}| test ppl {:9.3f}".format(
+            test_loss, test_loss / math.log(2), math.exp(test_loss)
+        )
+    )
+    if args.wandb:
+        wandb.log(
+            {
+                "test_loss": test_loss,
+                "test_ppl": math.exp(test_loss),
+                "test_bpc": (test_loss / math.log(2)),
+                "test_tokens": test_tokens,
+            }
+        )
+
+    logger("=" * 100)
 
 
 if __name__ == "__main__":
@@ -47,11 +154,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data",
         type=str,
-        default="/datadrive/openwebtext2",
+        default="../data/wikitext-103",
         help="location of the data corpus",
     )
     parser.add_argument(
-        "--dataset", type=str, default="openwebtext2", help="dataset name"
+        "--dataset", type=str, default="wikitext-103", help="dataset name"
     )
     parser.add_argument(
         "--model_size",
@@ -71,7 +178,6 @@ if __name__ == "__main__":
             "large",
         ],
         help="model size",
-        default="x6small",
     )
     parser.add_argument(
         "--n_layer", type=int, default=12, help="number of total layers"
@@ -80,8 +186,8 @@ if __name__ == "__main__":
     parser.add_argument("--d_embd", type=int, default=-1, help="embedding dimension")
     parser.add_argument("--d_model", type=int, default=500, help="model dimension")
     parser.add_argument("--d_ff", type=int, default=1000, help="inner dimension in FF")
-    parser.add_argument("--n_ctx", type=int, default=1024, help="context length")
-    parser.add_argument("--n_positions", type=int, default=1024, help="max seq length")
+    parser.add_argument("--n_ctx", type=int, default=128, help="context length")
+    parser.add_argument("--n_positions", type=int, default=500, help="max seq length")
     parser.add_argument(
         "--dropout", type=float, default=0.0, help="global dropout rate"
     )
@@ -105,7 +211,9 @@ if __name__ == "__main__":
         choices=["cosine", "inv_sqrt", "constant"],
         help="lr scheduler to use.",
     )
-    parser.add_argument("--warmup_step", type=int, default=2, help="upper epoch limit")
+    parser.add_argument(
+        "--warmup_step", type=int, default=3000, help="upper epoch limit"
+    )
     parser.add_argument(
         "--lr_min",
         type=float,
@@ -118,11 +226,9 @@ if __name__ == "__main__":
         action="store_true",
         help="only clip the gradient of non-embedding params",
     )
-    parser.add_argument("--max_step", type=int, default=25000, help="upper step limit")
+    parser.add_argument("--max_step", type=int, default=100000, help="upper step limit")
     parser.add_argument("--max_epoch", type=int, help="upper epoch limit")
-    parser.add_argument("--batch_size", type=int, default=512, help="batch size")
-    parser.add_argument("--mini_batch_size", type=int, default=2, help="batch size")
-    parser.add_argument("--eval_batch_size", type=int, default=2, help="batch size")
+    parser.add_argument("--batch_size", type=int, default=60, help="batch size")
     parser.add_argument(
         "--batch_chunk",
         type=int,
@@ -135,7 +241,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--log-interval", type=int, default=10, help="report interval")
     parser.add_argument(
-        "--eval_interval", type=int, default=512, help="evaluation interval"
+        "--eval_interval", type=int, default=10, help="evaluation interval"
     )
     parser.add_argument(
         "--work_dir", default="experiments", type=str, help="experiment directory."
@@ -180,7 +286,7 @@ if __name__ == "__main__":
     parser.add_argument("--entity", type=str, default="openai-scholars")
     parser.add_argument("--n_val_stop", type=int, default=3)
     parser.add_argument("--n_nodes", default=1, type=int, metavar="N")
-    parser.add_argument("--n_gpus", default=1, type=int, help="number of gpus per node")
+    parser.add_argument("--n_gpus", default=0, type=int, help="number of gpus per node")
     parser.add_argument("--nr", default=0, type=int, help="ranking within the nodes")
     args = parser.parse_args()
     main(args)
