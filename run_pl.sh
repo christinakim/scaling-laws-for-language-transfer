@@ -2,7 +2,7 @@
 
 if [[ $1 == 'train' ]]; then
     echo 'Run training...'
-    python train_2.py \
+    python train.py \
         --cuda \
         --data /datadrive/$2 \
         --dataset $2 \
