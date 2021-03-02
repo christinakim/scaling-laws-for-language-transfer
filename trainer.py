@@ -10,14 +10,16 @@ from pytorch_lightning.loggers import WandbLogger
 from pytz import timezone
 from pytz import utc
 from transformers import GPT2Tokenizer
-from transformers import OpenAIGPTConfig
-from transformers import OpenAIGPTLMHeadModel
+from transformers import GPT2Config
+from transformers import GPT2LMHeadModel
 
+from datamodules import FileDataModule
 from datamodules import OpenWebText2DataModule
 from datamodules import WikiText2DataModule
 from optim_utils import GradualWarmupScheduler
+from optim_utils import CosineAnnealingWarmupRestarts
 
-PICKLE_FILE = "/datadrive/batches_9.pkl"
+PICKLE_FILE = "/datadrive/shakespeare_output.pkl"
 
 
 def get_pst_time():
@@ -46,7 +48,12 @@ def get_trainer(args):
             data_dir=args.data,
         )
     else:
-        raise NotImplementedError
+        data_module = FileDataModule(
+            sequence_length=args.n_ctx,
+            batch_size=args.mini_batch_size,
+            eval_batch_size=args.eval_batch_size,
+            data_dir=args.data,
+        )
 
     data_module.prepare_data()
     data_module.setup("fit")
@@ -62,7 +69,7 @@ def get_trainer(args):
     #     d_ff=args.d_ff,
     # )
     # model = GPT(configuration)
-    configuration = OpenAIGPTConfig(
+    configuration = GPT2Config(
         vocab_size=args.n_tokens,
         n_ctx=args.n_ctx,
         n_positions=args.n_ctx,
@@ -70,21 +77,24 @@ def get_trainer(args):
         n_head=args.n_head,
         n_inner=args.d_ff,
         n_embd=args.d_embd,
+        bos_token_id=data_module.tokenizer.bos_token_id,
+        eos_token_id=data_module.tokenizer.eos_token_id,
     )
 
-    model = OpenAIGPTLMHeadModel(configuration)
+    model = GPT2LMHeadModel(configuration)
     args.n_all_param = sum([p.nelement() for p in model.parameters()])
     args.n_nonemb_param = sum(
         [p.nelement() for p in model.parameters() if p.requires_grad]
     )
-    gpt_pl = GPTLightning(model=model, args=args)
+    gpt_pl = GPTLightning(model=model, args=args, tokenizer = data_module.tokenizer)
 
     dt_string = get_pst_time()
 
     run_name = "{}_{}_{}".format(args.dataset, args.model_size, dt_string)
-    wandb_logger = WandbLogger(name=run_name, project=args.dataset, entity=args.entity)
+    wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity)
 
-    if args.n_gpus > 1:
+    #if args.n_gpus > 1:
+    if False:
         trainer = pl.Trainer(
             val_check_interval=args.eval_interval,
             weights_summary="full",
@@ -102,7 +112,7 @@ def get_trainer(args):
         trainer = pl.Trainer(
             val_check_interval=args.eval_interval * args.accumulate_grad_batches,
             weights_summary="full",
-            gpus=[1],
+            gpus=[args.n_gpus],
             logger=wandb_logger,
             gradient_clip_val=args.clip,
             limit_val_batches=args.max_eval_steps,
@@ -115,14 +125,14 @@ def get_trainer(args):
 
 
 class GPTLightning(pl.LightningModule):
-    def __init__(self, model, args):
+    def __init__(self, model, args, tokenizer):
         super().__init__()
         self.args = args
         self.model = model
         self.save_hyperparameters(args)
         self.train_seen = []
         self.val_seen = []
-        self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        self.tokenizer = tokenizer
 
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
@@ -132,11 +142,11 @@ class GPTLightning(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # training_step defined the train loop. It is independent of forward
 
-        src, target, _ = batch
+        src, _ = batch
 
         add_to_pickle(batch)
 
-        outputs = self.model(input_ids=src, labels=target)
+        outputs = self.model(input_ids=src, labels=src)
         loss = outputs[0]
 
         float_loss = loss.item()
@@ -155,8 +165,8 @@ class GPTLightning(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
 
-        src, target, meta = batch
-        outputs = self.model(input_ids=src, labels=target)
+        src, meta = batch
+        outputs = self.model(input_ids=src, labels=src)
         loss = outputs[0].item()
 
         # Add sync_dist=True to sync logging across all GPU workers
@@ -195,22 +205,17 @@ class GPTLightning(pl.LightningModule):
             },
             step=self.global_step,
         )
-        sentence_prefix = "I am"
 
-        input_ids = self.tokenizer.encode(
-            sentence_prefix, add_special_tokens=False, return_tensors="pt",
-        ).to(self.device)
-        output_ids = self.model.generate(
-            input_ids=input_ids,
+        outputs = self.model.generate(
+            input_ids=None,
             do_sample=True,
-            max_length=20,  # desired output sentence length
+            max_length=40,  # desired output sentence length
             pad_token_id=self.model.config.eos_token_id,
-        )[0].tolist()
-
-        generated_text = self.tokenizer.decode(
-            output_ids, clean_up_tokenization_spaces=True
+            bos_token_id=self.model.config.bos_token_id,
         )
-        self.log("generated", generated_text, prog_bar=True)
+
+        generated = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        self.log("generated", generated, prog_bar=True)
 
     def test_step(self, batch, batch_idx):
         x, y, x_len = batch
@@ -247,8 +252,8 @@ class GPTLightning(pl.LightningModule):
         if self.args.scheduler == "cosine":
             cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
                 optimizer,
-                self.trainer.max_steps // self.args.batch_size,
-                eta_min=self.args.lr * 0.2,
+                self.trainer.max_steps,
+                eta_min=0,
             )
             scheduler = GradualWarmupScheduler(
                 optimizer, self.args.warmup_step, after_scheduler=cosine_scheduler
@@ -271,6 +276,8 @@ class GPTLightning(pl.LightningModule):
 
         else:
             raise NotImplementedError
+
+        scheduler = CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=self.trainer.max_steps, cycle_mult=1.0, max_lr=self.args.lr, min_lr=0.0, warmup_steps=self.args.warmup_step, gamma=1.0)
         return (
             [optimizer],
             [

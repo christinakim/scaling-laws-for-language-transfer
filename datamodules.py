@@ -3,6 +3,8 @@ import io
 import itertools
 import json
 import os
+import os.path
+from os import path
 import random
 from pathlib import Path
 from typing import Optional
@@ -17,6 +19,12 @@ from torchtext.data.utils import get_tokenizer
 from torchtext.utils import download_from_url
 from torchtext.utils import extract_archive
 from torchtext.vocab import build_vocab_from_iterator
+from tokenizers import Tokenizer
+from tokenizers.models import BPE
+from tokenizers.pre_tokenizers import Whitespace
+from tokenizers.trainers import BpeTrainer
+from transformers import PreTrainedTokenizerFast
+from transformers import GPT2Tokenizer
 
 from data_utils import WebTextIter
 
@@ -78,6 +86,7 @@ class OpenWebText2DataModule(pl.LightningDataModule):
 
         vocab = build_vocab_from_json(self.data_dir + "/gpt2-vocab.json")
         self.vocab = vocab
+        self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
         # self.train_paths = [
         #     path
         #     for idx, path in enumerate(all_paths)
@@ -95,6 +104,8 @@ class OpenWebText2DataModule(pl.LightningDataModule):
             dataset_paths=self.train_paths,
             seq_len=self.sequence_length,
             batch_size=self.batch_size,
+            tokenizer = self.tokenizer
+
         )
         data_loader = DataLoader(train_dataset, batch_size=None, sampler=None)
         return data_loader
@@ -104,6 +115,7 @@ class OpenWebText2DataModule(pl.LightningDataModule):
             dataset_paths=self.val_paths,
             seq_len=self.sequence_length,
             batch_size=self.eval_batch_size,
+            tokenizer = self.tokenizer
         )
 
         data_loader = DataLoader(val_dataset, batch_size=None, sampler=None,)
@@ -114,8 +126,63 @@ class OpenWebText2DataModule(pl.LightningDataModule):
             dataset_paths=self.test_paths,
             seq_len=self.sequence_length,
             batch_size=self.eval_batch_size,
+                        tokenizer = self.tokenizer
+
         )
         return DataLoader(test_dataset, batch_size=None, sampler=None)
+
+
+class FileDataModule(OpenWebText2DataModule):
+    def __init__(
+        self,
+        sequence_length: int,
+        batch_size: int,
+        eval_batch_size: int = None,
+        data_dir="/datadrive/",
+    ):
+        super().__init__(sequence_length, batch_size, eval_batch_size, data_dir)
+        self.batch_size = batch_size
+        self.eval_batch_size = eval_batch_size if eval_batch_size else 5
+        self.sequence_length = sequence_length
+        self.data_dir = data_dir
+
+    def setup(self, stage: Optional[str] = None):
+        self.train_paths = [self.data_dir + "/train.txt"]
+        self.val_paths = [self.data_dir + "/valid.txt"]
+        self.test_paths = [self.data_dir + "/test.txt"]
+
+        self.all_paths = self.train_paths + self.val_paths + self.test_paths
+        if not os.path.exists(self.data_dir+ "/tokenizer.json"):
+
+            tokenizer = Tokenizer(BPE())
+
+            tokenizer.pre_tokenizer = Whitespace()
+
+            trainer = BpeTrainer()
+
+            tokenizer.train(files=self.all_paths, trainer=trainer)
+            #special_tokens_dict = ['bos_token','eos_token']
+            special_tokens_dict = ['<bos>', '<eos>']
+            num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
+            print('We have added', num_added_toks, 'tokens')
+            tokenizer = tokenizer.save(self.data_dir + "/tokenizer.json")
+
+        self.tokenizer = PreTrainedTokenizerFast(tokenizer_file=self.data_dir + "/tokenizer.json", unk_token='<unk>', bos_token='<bos>', eos_token='<eos>')
+
+        self.vocab = self.tokenizer.get_vocab()
+
+        # self.train_paths = [
+        #     path
+        #     for idx, path in enumerate(all_paths)
+        #     if idx % 10 in (0, 2, 4, 6, 8,)
+        # ]
+        # self.valid_paths = [
+        #     path for idx, path in enumerate(all_paths) if idx % 10 in (1, 9)
+        # ]
+        # self.test_paths = [
+        #     path for idx, path in enumerate(all_paths) if idx % 10 in (3, 7)
+        # ]
+
 
 
 class WikiText2DataModule(pl.LightningDataModule):
@@ -194,108 +261,3 @@ class WikiText2DataModule(pl.LightningDataModule):
             data = self.test_data
         return DataLoader(data, num_workers=24, batch_size=None)
 
-
-class WebTextIterableDataset(IterableDataset):
-    def __init__(self, files, seq_len, vocab, batch_size):
-        self.filenames = files[:10]
-        self.batch_size = batch_size
-        self.vocab = vocab
-        self.seq_len = seq_len
-
-    @property
-    def shuffled_filename_list(self):
-        return np.random.choice(self.filenames, len(self.filenames))
-
-    def process_data(self, filename):
-        tokens = self.vocab.encode_zst(filename)
-        for i in range(0, len(tokens) - self.seq_len):
-            end_idx = i + self.seq_len
-            beg_idx = i
-            data = tokens[beg_idx:end_idx]
-            target = tokens[beg_idx + 1 : beg_idx + 1 + self.seq_len]
-            yield data, target, self.seq_len
-        return
-
-    def get_stream(self, filename_list):
-        return itertools.chain.from_iterable(
-            map(self.process_data, itertools.cycle(filename_list))
-        )
-
-    def get_streams(self):
-        return zip(
-            *[
-                self.get_stream(self.shuffled_filename_list)
-                for _ in range(self.batch_size)
-            ]
-        )
-
-    def __iter__(self):
-        return self.get_streams()
-
-
-def collate_fn(batch):
-    data_list, label_list, seq_len_list = [], [], []
-    for _data, _label, _seq in batch:
-        data_list.append(_data)
-        label_list.append(_label)
-        seq_len_list.append(_seq)
-    return (
-        torch.LongTensor(data_list),
-        torch.LongTensor(label_list),
-        torch.LongTensor(seq_len_list),
-    )
-
-
-class OpenWebText2_V2_DataModule(pl.LightningDataModule):
-    def __init__(
-        self,
-        data_dir,
-        vocab,
-        sequence_length: int,
-        batch_size: int,
-        eval_batch_size: int = None,
-    ):
-        super().__init__()
-        self.batch_size = batch_size
-        self.eval_batch_size = eval_batch_size if eval_batch_size else batch_size
-        self.sequence_length = sequence_length
-        self.data_dir = data_dir
-        self.vocab = vocab
-
-    def setup(self, stage: Optional[str] = None):
-        all_paths = [str(x) for x in Path(self.data_dir).glob("**/*.zst")]
-        random.shuffle(all_paths)
-
-        if stage == "fit" or stage is None:
-            self.train_dataset = WebTextIterableDataset(
-                all_paths[:90],
-                vocab=self.vocab,
-                seq_len=self.sequence_length,
-                batch_size=self.batch_size,
-            )
-            self.val_dataset = WebTextIterableDataset(
-                all_paths[:20],
-                vocab=self.vocab,
-                seq_len=self.sequence_length,
-                batch_size=self.batch_size,
-            )
-        if stage == "test" or stage is None:
-            self.test_dataset = WebTextIterableDataset(
-                all_paths,
-                vocab=self.vocab,
-                seq_len=self.sequence_length,
-                batch_size=self.batch_size,
-            )
-
-    def train_dataloader(self):
-        data_loader = DataLoader(
-            self.train_dataset, batch_size=None, batch_sampler=None
-        )
-        return data_loader
-
-    def val_dataloader(self):
-
-        return DataLoader(self.val_dataset, batch_size=None, batch_sampler=None)
-
-    def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=None)
