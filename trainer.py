@@ -79,6 +79,9 @@ def get_trainer(args):
         n_embd=args.d_embd,
         bos_token_id=data_module.tokenizer.bos_token_id,
         eos_token_id=data_module.tokenizer.eos_token_id,
+        attn_pdrop=args.dropatt,
+        embd_pdrop=args.dropout,
+        resid_pdrop=args.dropout,
     )
 
     model = GPT2LMHeadModel(configuration)
@@ -90,8 +93,8 @@ def get_trainer(args):
 
     dt_string = get_pst_time()
 
-    run_name = "{}_{}_{}".format(args.dataset, args.model_size, dt_string)
-    wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity)
+    run_name = "{}_{}_{}_{}".format(args.dataset, args.model_size, args.note, dt_string)
+    wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity, save_dir='/datadrive/wandb')
 
     #if args.n_gpus > 1:
     if False:
@@ -143,8 +146,6 @@ class GPTLightning(pl.LightningModule):
         # training_step defined the train loop. It is independent of forward
 
         src, _ = batch
-
-        add_to_pickle(batch)
 
         outputs = self.model(input_ids=src, labels=src)
         loss = outputs[0]
