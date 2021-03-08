@@ -80,6 +80,7 @@ class OpenWebText2DataModule(pl.LightningDataModule):
     def setup(self, stage: Optional[str] = None):
         files = glob.glob(os.path.join(self.data_dir + "/shards", "*"))
         # files = glob.glob(os.path.join(self.data_dir, "*.jsonl.zst"))
+        print(files)
         self.train_paths = files[:80]
         self.val_paths = files[80:90]
         self.test_paths = files[90:]

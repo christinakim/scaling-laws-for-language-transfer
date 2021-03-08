@@ -7,21 +7,22 @@ if [[ $1 == 'train' ]]; then
         --data /datadrive/$2 \
         --dataset $2 \
         --model_size $3 \
-        --n_positions 1024 \
         --n_ctx 1024 \
-        --dropout 0.1 \
+        --dropout 0.0 \
         --dropatt 0.0 \
         --optim adam \
-        --warmup_step 300 \
+        --clip 1.0 \
         --batch_size 512 \
-        --mini_batch_size 2 \
-        --gpu0_bsz 1 \
+        --mini_batch_size 8 \
         --eval_interval 10 \
-        --n_nodes 1 \
-        --n_gpus 1  \
+        --warmup_step 500 \
+        --max_step 250000 \
+        --n_gpus $4  \
         --eval_batch_size 2 \
         --max_eval_steps 2 \
-        --max_epoch 100
+        --max_epoch 100 \
+        --local \
+        --note $5 \
 
 elif [[ $1 == 'eval' ]]; then
     echo 'Run evaluation...'

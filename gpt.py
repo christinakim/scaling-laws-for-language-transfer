@@ -11,8 +11,8 @@ class ModelSettings:
         self.d_model = d_model
         self.learning_rate = learning_rate
         self.n_head = max(2, self.d_model // 64)
-        self.d_ff = 4
-        self.d_attn = 1
+        self.d_ff = 4 * d_model
+        self.d_attn = 1 * d_model
 
 
 common_models_by_name = {

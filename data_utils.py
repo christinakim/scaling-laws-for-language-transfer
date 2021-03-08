@@ -107,7 +107,7 @@ class TokenizerIterator:
     def __init__(self, seq_len, tokenizer, seed, dataset_path):
         self.seq_len = seq_len
         self.tokenizer = tokenizer
-        if "webtext" in dataset_path:
+        if True:
             self.document_iter = WebTextDocumentIterator(dataset_path)
         else:
             self.document_iter = None
@@ -119,7 +119,7 @@ class TokenizerIterator:
         if self.document_iter:
             for documents in self.document_iter:
                 random.Random(self.seed).shuffle(documents)
-
+                docs = []
                 for doc_i, x in enumerate(documents):
                     tokenized = self.tokenizer(text=x[1],).input_ids
                     tokenized.append(self.tokenizer.eos_token_id)
@@ -192,14 +192,6 @@ class BatchIterator:
 
     def __iter__(self):
         return self.get_streams()
-
-        # batches = []
-        # batch = []
-        # for x in self.tokenizer_iter:
-        #     batch.append(x)
-        #     if len(batch) == self.batch_size:
-        #         yield batch
-        #         batch = []
 
 
 class WebTextIter(IterableDataset):

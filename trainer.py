@@ -37,10 +37,14 @@ def add_to_pickle(item, path=PICKLE_FILE):
 
 def get_trainer(args):
     if args.dataset == "wikitext2":
+        print('getting wikitext2 datamodule')
+
         data_module = WikiText2DataModule(
             sequence_length=args.n_ctx, batch_size=args.mini_batch_size
         )
     elif args.dataset == "openwebtext2":
+        print('getting openwebtext2 datamodule')
+
         data_module = OpenWebText2DataModule(
             sequence_length=args.n_ctx,
             batch_size=args.mini_batch_size,
@@ -48,14 +52,17 @@ def get_trainer(args):
             data_dir=args.data,
         )
     else:
+        print('getting file datamodule')
+
         data_module = FileDataModule(
             sequence_length=args.n_ctx,
             batch_size=args.mini_batch_size,
             eval_batch_size=args.eval_batch_size,
             data_dir=args.data,
         )
-
+    print('preparing dm')
     data_module.prepare_data()
+    print('setting up dm')
     data_module.setup("fit")
     ntokens = len(data_module.vocab)
     args.n_tokens = ntokens
@@ -69,6 +76,7 @@ def get_trainer(args):
     #     d_ff=args.d_ff,
     # )
     # model = GPT(configuration)
+    print('creating config')
     configuration = GPT2Config(
         vocab_size=args.n_tokens,
         n_ctx=args.n_ctx,
@@ -94,7 +102,11 @@ def get_trainer(args):
     dt_string = get_pst_time()
 
     run_name = "{}_{}_{}_{}".format(args.dataset, args.model_size, args.note, dt_string)
-    wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity, save_dir='/datadrive/wandb')
+    if args.local:
+        print('is local')
+        wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity, save_dir='/datadrive/wandb')
+    else:
+        wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity,)
 
     #if args.n_gpus > 1:
     if False:
@@ -120,7 +132,7 @@ def get_trainer(args):
             gradient_clip_val=args.clip,
             limit_val_batches=args.max_eval_steps,
             accumulate_grad_batches=args.accumulate_grad_batches,
-            max_steps=args.max_step,
+            max_steps=args.max_step*10000,
             enable_pl_optimizer=True,
             log_every_n_steps=args.accumulate_grad_batches,
         )
@@ -249,36 +261,36 @@ class GPTLightning(pl.LightningModule):
         else:
             raise NotImplementedError
 
-        #### scheduler
-        if self.args.scheduler == "cosine":
-            cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-                optimizer,
-                self.trainer.max_steps,
-                eta_min=0,
-            )
-            scheduler = GradualWarmupScheduler(
-                optimizer, self.args.warmup_step, after_scheduler=cosine_scheduler
-            )
+        # #### scheduler
+        # if self.args.scheduler == "cosine":
+        #     cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        #         optimizer,
+        #         self.args.max_steps,
+        #         eta_min=.1*self.args.lr,
+        #     )
+        #     scheduler = GradualWarmupScheduler(
+        #         optimizer, self.args.warmup_step, after_scheduler=cosine_scheduler
+        #     )
 
-        elif self.args.scheduler == "inv_sqrt":
-            # originally used for Transformer (in Attention is all you need)
-            def lr_lambda(step):
-                # return a multiplier instead of a learning rate
-                if step == 0 and self.args.warmup_step == 0:
-                    return 1.0
-                else:
-                    return (
-                        1.0 / (step ** 0.5)
-                        if step > self.args.warmup_step
-                        else step / (self.args.warmup_step ** 1.5)
-                    )
+        # elif self.args.scheduler == "inv_sqrt":
+        #     # originally used for Transformer (in Attention is all you need)
+        #     def lr_lambda(step):
+        #         # return a multiplier instead of a learning rate
+        #         if step == 0 and self.args.warmup_step == 0:
+        #             return 1.0
+        #         else:
+        #             return (
+        #                 1.0 / (step ** 0.5)
+        #                 if step > self.args.warmup_step
+        #                 else step / (self.args.warmup_step ** 1.5)
+        #             )
 
-            scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+        #     scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
-        else:
-            raise NotImplementedError
+        # else:
+        #     raise NotImplementedError
 
-        scheduler = CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=self.trainer.max_steps, cycle_mult=1.0, max_lr=self.args.lr, min_lr=0.0, warmup_steps=self.args.warmup_step, gamma=1.0)
+        scheduler = CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=self.args.max_step, cycle_mult=1.0, max_lr=self.args.lr, min_lr=.1*self.args.lr, warmup_steps=self.args.warmup_step, gamma=1.0)
         return (
             [optimizer],
             [

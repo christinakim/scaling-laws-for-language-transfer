@@ -47,11 +47,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data",
         type=str,
-        default="/datadrive/shakespeare",
+        default="/datadrive/openwebtext2",
         help="location of the data corpus",
     )
     parser.add_argument(
-        "--dataset", type=str, default="shakespeare", help="dataset name"
+        "--dataset", type=str, default="openwebtext2", help="dataset name"
     )
     parser.add_argument(
         "--model_size",
@@ -118,10 +118,10 @@ if __name__ == "__main__":
         action="store_true",
         help="only clip the gradient of non-embedding params",
     )
-    parser.add_argument("--max_step", type=int, default=30, help="upper step limit")
+    parser.add_argument("--max_step", type=int, default=20, help="upper step limit")
     parser.add_argument("--max_epoch", type=int, help="upper epoch limit")
-    parser.add_argument("--batch_size", type=int, default=512, help="batch size")
-    parser.add_argument("--mini_batch_size", type=int, default=8, help="batch size")
+    parser.add_argument("--batch_size", type=int, default=1, help="batch size")
+    parser.add_argument("--mini_batch_size", type=int, default=1, help="batch size")
     parser.add_argument("--eval_batch_size", type=int, default=2, help="batch size")
     parser.add_argument(
         "--batch_chunk",
@@ -135,7 +135,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--log-interval", type=int, default=10, help="report interval")
     parser.add_argument(
-        "--eval_interval", type=int, default=512, help="evaluation interval"
+        "--eval_interval", type=int, default=2, help="evaluation interval"
     )
     parser.add_argument(
         "--work_dir", default="experiments", type=str, help="experiment directory."
@@ -170,6 +170,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--wandb", action="store_false", help="Log to wandb if absent",
+    )
+    parser.add_argument(
+        "--local", action="store_true", help="remote if absent",
     )
     parser.add_argument(
         "--sample", action="store_true", help="if included sample",
