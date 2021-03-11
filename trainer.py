@@ -7,6 +7,8 @@ import pytorch_lightning as pl
 import torch
 import torch.optim as optim
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.callbacks import ModelCheckpoint
+
 from pytz import timezone
 from pytz import utc
 from transformers import GPT2Tokenizer
@@ -109,6 +111,7 @@ def get_trainer(args):
         wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity,)
 
     #if args.n_gpus > 1:
+
     if False:
         trainer = pl.Trainer(
             val_check_interval=args.eval_interval,
@@ -208,7 +211,7 @@ class GPTLightning(pl.LightningModule):
         epoch_metric = torch.mean(
             torch.stack([x["val_loss"] for x in validation_step_outputs])
         )
-
+        tokens =  (self.global_step) * self.args.batch_size * self.args.n_ctx
         self.logger.experiment.log(
             {
                 "validation_avg_loss": epoch_metric.item(),
@@ -218,6 +221,15 @@ class GPTLightning(pl.LightningModule):
             },
             step=self.global_step,
         )
+
+        if self.global_step in [10**1, 10**2, 10**3, 10**4, 10**5, 10**6]:
+            torch.save({
+            'step': self.global_step,
+            'tokens': tokens,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizers()[0].state_dict(),
+            'validation_avg_loss': epoch_metric.item(),
+            }, self.args.save_dir)
 
         outputs = self.model.generate(
             input_ids=None,
