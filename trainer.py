@@ -1,5 +1,6 @@
 import datetime
 import math
+import os
 import pickle
 from datetime import datetime
 
@@ -106,7 +107,7 @@ def get_trainer(args):
     run_name = "{}_{}_{}_{}".format(args.dataset, args.model_size, args.note, dt_string)
     if args.local:
         print('is local')
-        wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity, save_dir='/datadrive/wandb')
+        wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity, log_model=True, save_dir='/datadrive/wandb')
     else:
         wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity,)
 
@@ -151,6 +152,7 @@ class GPTLightning(pl.LightningModule):
         self.train_seen = []
         self.val_seen = []
         self.tokenizer = tokenizer
+        self.save_intervals = [x-1 for x in [10**1, 10**2, 10**3, 10**4, 10**5, 10**6]]
 
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
@@ -176,6 +178,9 @@ class GPTLightning(pl.LightningModule):
             },
             step=self.global_step,
         )
+
+
+
 
         return {"loss": loss}
 
@@ -205,6 +210,8 @@ class GPTLightning(pl.LightningModule):
             step=self.global_step,
         )
 
+
+
         return {"val_loss": outputs[0]}
 
     def validation_epoch_end(self, validation_step_outputs):
@@ -221,26 +228,27 @@ class GPTLightning(pl.LightningModule):
             },
             step=self.global_step,
         )
-
-        if self.global_step in [10**1, 10**2, 10**3, 10**4, 10**5, 10**6]:
+        
+        if self.global_step in self.save_intervals:
+            file_path = '{dir}/{step:02d}step-{token}token-{val_loss:.2f}loss.pt'.format(dir=self.logger.experiment.dir, step=self.global_step, token=tokens, val_loss=epoch_metric.item())
             torch.save({
-            'step': self.global_step,
-            'tokens': tokens,
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizers()[0].state_dict(),
-            'validation_avg_loss': epoch_metric.item(),
-            }, self.args.save_dir)
+                'step': self.global_step,
+                'tokens': tokens,
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.trainer.optimizers[0].state_dict(),
+                'validation_avg_loss': epoch_metric.item(),
+            }, file_path)
+            self.logger.experiment.save(file_path)
+            outputs = self.model.generate(
+                input_ids=None,
+                do_sample=True,
+                max_length=40,  # desired output sentence length
+                pad_token_id=self.model.config.eos_token_id,
+                bos_token_id=self.model.config.bos_token_id,
+            )
 
-        outputs = self.model.generate(
-            input_ids=None,
-            do_sample=True,
-            max_length=40,  # desired output sentence length
-            pad_token_id=self.model.config.eos_token_id,
-            bos_token_id=self.model.config.bos_token_id,
-        )
-
-        generated = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        self.log("generated", generated, prog_bar=True)
+            generated = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            self.log("generated", generated, prog_bar=True)
 
     def test_step(self, batch, batch_idx):
         x, y, x_len = batch
