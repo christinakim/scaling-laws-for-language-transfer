@@ -9,6 +9,7 @@ from itertools import cycle
 import jsonlines
 import torch
 import zstandard
+from torch.utils.data import Dataset
 from torch.utils.data.dataset import IterableDataset
 from transformers import GPT2Tokenizer
 
@@ -76,6 +77,19 @@ class Reader:
                     yield file, text
 
 
+def collate_fn(batch):
+    data_list, label_list, seq_len_list = [], [], []
+    # for _data, _label, _seq in batch:
+    for _data, _seq in batch:
+        data_list.append(_data)
+        seq_len_list.append(_seq)
+    return (
+        torch.LongTensor(data_list),
+        # torch.LongTensor(label_list),
+        seq_len_list,
+    )
+
+
 class WebTextDocumentIterator:
     def __init__(self, dataset_path):
         self.dataset_path = dataset_path
@@ -108,11 +122,8 @@ class TokenizerIterator:
     def __init__(self, seq_len, tokenizer, seed, dataset_path):
         self.seq_len = seq_len
         self.tokenizer = tokenizer
-        if True:
-            self.document_iter = WebTextDocumentIterator(dataset_path)
-        else:
-            self.document_iter = None
-            self.file_iter = FileIterator(dataset_path)
+        self.document_iter = WebTextDocumentIterator(dataset_path)
+
         self.seed = seed
 
     def __iter__(self):
@@ -217,21 +228,46 @@ class WebTextIter(IterableDataset):
             for streams in self.batch_iter:
                 for sample in streams:
                     if len(batch) == self.batch_size:
-                        yield self.collate_fn(batch)
+                        yield collate_fn(batch)
                         batch = []
                     batch.append(sample)
 
         except StopIteration:
             return
 
-    def collate_fn(self, batch):
-        data_list, label_list, seq_len_list = [], [], []
-        # for _data, _label, _seq in batch:
-        for _data, _seq in batch:
-            data_list.append(_data)
-            seq_len_list.append(_seq)
-        return (
-            torch.LongTensor(data_list),
-            # torch.LongTensor(label_list),
-            seq_len_list,
-        )
+
+class ChineseWebtextDataset(IterableDataset):
+    def __init__(
+        self, file, seq_len, batch_size, token_limit, tokenizer=None,
+    ):
+        self.file = file
+        self.seq_len = seq_len
+        self.batch_size = batch_size
+        self.token_limit = token_limit
+        self.token_count = 0
+        if tokenizer is None:
+            self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        else:
+            self.tokenizer = tokenizer
+
+    def get_block(self):
+        block = []
+        with jsonlines.open(self.file) as reader:
+            for obj in reader:
+                content = obj["content"]
+                tokenized = self.tokenizer(text=content,).input_ids
+                tokenized.append(self.tokenizer.eos_token_id)
+                tokenized.insert(0, self.tokenizer.eos_token_id)
+                for token in tokenized:
+                    if len(block) == self.seq_len:
+                        yield block
+                        block = []
+                    block.append(token)
+
+    def __iter__(self):
+        batch = []
+        for x in self.get_block():
+            batch.append(x)
+            if len(batch) == self.batch_size:
+                yield collate_fn(batch)
+                batch = []

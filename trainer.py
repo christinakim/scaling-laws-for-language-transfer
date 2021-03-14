@@ -16,6 +16,7 @@ from transformers import GPT2Tokenizer
 from transformers import GPT2Config
 from transformers import GPT2LMHeadModel
 
+from datamodules import ChineseWebtextDataModule
 from datamodules import FileDataModule
 from datamodules import OpenWebText2DataModule
 from optim_utils import GradualWarmupScheduler
@@ -46,6 +47,16 @@ def get_trainer(args):
             batch_size=args.mini_batch_size,
             eval_batch_size=args.eval_batch_size,
             data_dir=args.data,
+        )
+    elif args.dataset == "webtext2019zh":
+        print("getting webtext2019zh datamodule")
+
+        data_module = ChineseWebtextDataModule(
+            sequence_length=args.n_ctx,
+            batch_size=args.mini_batch_size,
+            eval_batch_size=args.eval_batch_size,
+            data_dir=args.data,
+            token_limit=args.token_limit,
         )
     else:
         print("getting file datamodule")

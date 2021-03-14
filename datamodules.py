@@ -23,6 +23,7 @@ from tokenizers.trainers import BpeTrainer
 from transformers import PreTrainedTokenizerFast
 from transformers import GPT2Tokenizer
 
+from data_utils import ChineseWebtextDataset
 from data_utils import WebTextIter
 
 
@@ -39,25 +40,6 @@ def build_vocab_from_json(vocab_file):
     with open(vocab_file) as json_file:
         data = json.load(json_file)
     return dict(data)
-
-
-class LMDataset(Dataset):
-    def __init__(self, source, seq_len, vocab):
-        self.vocab = vocab
-        self.seq_len = seq_len
-        self.source = source
-
-    def get_batch(self, i):
-        seq_len = min(self.seq_len, len(self.source) - 1 - i)
-        data = self.source[i : i + seq_len]
-        target = self.source[i + 1 : i + 1 + seq_len].reshape(-1)
-        return data, target, seq_len
-
-    def __len__(self):
-        return len(self.source)
-
-    def __getitem__(self, index=0):
-        return self.get_batch(index)
 
 
 class OpenWebText2DataModule(pl.LightningDataModule):
@@ -183,3 +165,55 @@ class FileDataModule(OpenWebText2DataModule):
         # self.test_paths = [
         #     path for idx, path in enumerate(all_paths) if idx % 10 in (3, 7)
         # ]
+
+
+class ChineseWebtextDataModule(pl.LightningDataModule):
+    def __init__(
+        self,
+        sequence_length: int,
+        batch_size: int,
+        token_limit: int,
+        eval_batch_size: int = None,
+        data_dir="/datadrive/",
+    ):
+        super().__init__()
+        self.batch_size = batch_size
+        self.eval_batch_size = eval_batch_size if eval_batch_size else 5
+        self.sequence_length = sequence_length
+        self.data_dir = data_dir
+        self.token_limit = token_limit
+
+    def setup(self, stage: Optional[str] = None):
+        self.test_file = self.data_dir + "web_text_zh_testa.json"
+        self.train_file = self.data_dir + "web_text_zh_train.json"
+        self.valid_file = self.data_dir + "web_text_zh_valid.json"
+
+    def train_dataloader(self):
+        train_dataset = ChineseWebtextDataset(
+            file=self.train_file,
+            seq_len=self.sequence_length,
+            batch_size=self.batch_size,
+            token_limit=self.token_limit,
+        )
+        data_loader = DataLoader(train_dataset, batch_size=None, sampler=None)
+        return data_loader
+
+    def val_dataloader(self):
+        val_dataset = ChineseWebtextDataset(
+            file=self.valid_file,
+            seq_len=self.sequence_length,
+            batch_size=self.eval_batch_size,
+            token_limit=self.token_limit,
+        )
+
+        data_loader = DataLoader(val_dataset, batch_size=None, sampler=None,)
+        return data_loader
+
+    def test_dataloader(self):
+        test_dataset = ChineseWebtextDataset(
+            file=self.test_file,
+            seq_len=self.sequence_length,
+            batch_size=self.eval_batch_size,
+            token_limit=self.token_limit,
+        )
+        return DataLoader(test_dataset, batch_size=None, sampler=None)
