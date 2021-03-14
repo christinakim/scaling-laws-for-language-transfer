@@ -103,6 +103,7 @@ class FileIterator:
             text = f.read()
             yield text
 
+
 class TokenizerIterator:
     def __init__(self, seq_len, tokenizer, seed, dataset_path):
         self.seq_len = seq_len
@@ -111,7 +112,7 @@ class TokenizerIterator:
             self.document_iter = WebTextDocumentIterator(dataset_path)
         else:
             self.document_iter = None
-            self.file_iter = FileIterator(dataset_path)        
+            self.file_iter = FileIterator(dataset_path)
         self.seed = seed
 
     def __iter__(self):
@@ -134,13 +135,12 @@ class TokenizerIterator:
         else:
             for file in self.file_iter:
                 tokenized = self.tokenizer(text=file,).input_ids
-                
 
                 tokenized_length = len(tokenized)
-                idxs = [i for i in range(tokenized_length-self.seq_len)]
+                idxs = [i for i in range(tokenized_length - self.seq_len)]
                 while len(idxs) > 1:
-                    starting_idx = idxs.pop(random.randrange(len(idxs))) 
-                    block = tokenized[starting_idx:starting_idx+self.seq_len]
+                    starting_idx = idxs.pop(random.randrange(len(idxs)))
+                    block = tokenized[starting_idx : starting_idx + self.seq_len]
                     yield block, (starting_idx)
 
                 # if len(tokenized) >= self.seq_len:
@@ -226,12 +226,12 @@ class WebTextIter(IterableDataset):
 
     def collate_fn(self, batch):
         data_list, label_list, seq_len_list = [], [], []
-        #for _data, _label, _seq in batch:
+        # for _data, _label, _seq in batch:
         for _data, _seq in batch:
             data_list.append(_data)
             seq_len_list.append(_seq)
         return (
             torch.LongTensor(data_list),
-            #torch.LongTensor(label_list),
+            # torch.LongTensor(label_list),
             seq_len_list,
         )

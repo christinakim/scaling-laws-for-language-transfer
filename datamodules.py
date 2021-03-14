@@ -102,8 +102,7 @@ class OpenWebText2DataModule(pl.LightningDataModule):
             dataset_paths=self.train_paths,
             seq_len=self.sequence_length,
             batch_size=self.batch_size,
-            tokenizer = self.tokenizer
-
+            tokenizer=self.tokenizer,
         )
         data_loader = DataLoader(train_dataset, batch_size=None, sampler=None)
         return data_loader
@@ -113,7 +112,7 @@ class OpenWebText2DataModule(pl.LightningDataModule):
             dataset_paths=self.val_paths,
             seq_len=self.sequence_length,
             batch_size=self.eval_batch_size,
-            tokenizer = self.tokenizer
+            tokenizer=self.tokenizer,
         )
 
         data_loader = DataLoader(val_dataset, batch_size=None, sampler=None,)
@@ -124,8 +123,7 @@ class OpenWebText2DataModule(pl.LightningDataModule):
             dataset_paths=self.test_paths,
             seq_len=self.sequence_length,
             batch_size=self.eval_batch_size,
-                        tokenizer = self.tokenizer
-
+            tokenizer=self.tokenizer,
         )
         return DataLoader(test_dataset, batch_size=None, sampler=None)
 
@@ -150,7 +148,7 @@ class FileDataModule(OpenWebText2DataModule):
         self.test_paths = [self.data_dir + "/test.txt"]
 
         self.all_paths = self.train_paths + self.val_paths + self.test_paths
-        if not os.path.exists(self.data_dir+ "/tokenizer.json"):
+        if not os.path.exists(self.data_dir + "/tokenizer.json"):
 
             tokenizer = Tokenizer(BPE())
 
@@ -159,13 +157,18 @@ class FileDataModule(OpenWebText2DataModule):
             trainer = BpeTrainer()
 
             tokenizer.train(files=self.all_paths, trainer=trainer)
-            #special_tokens_dict = ['bos_token','eos_token']
-            special_tokens_dict = ['<bos>', '<eos>']
+            # special_tokens_dict = ['bos_token','eos_token']
+            special_tokens_dict = ["<bos>", "<eos>"]
             num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
-            print('We have added', num_added_toks, 'tokens')
+            print("We have added", num_added_toks, "tokens")
             tokenizer = tokenizer.save(self.data_dir + "/tokenizer.json")
 
-        self.tokenizer = PreTrainedTokenizerFast(tokenizer_file=self.data_dir + "/tokenizer.json", unk_token='<unk>', bos_token='<bos>', eos_token='<eos>')
+        self.tokenizer = PreTrainedTokenizerFast(
+            tokenizer_file=self.data_dir + "/tokenizer.json",
+            unk_token="<unk>",
+            bos_token="<bos>",
+            eos_token="<eos>",
+        )
 
         self.vocab = self.tokenizer.get_vocab()
 

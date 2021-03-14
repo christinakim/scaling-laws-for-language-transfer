@@ -39,7 +39,7 @@ def add_to_pickle(item, path=PICKLE_FILE):
 
 def get_trainer(args):
     if args.dataset == "openwebtext2":
-        print('getting openwebtext2 datamodule')
+        print("getting openwebtext2 datamodule")
 
         data_module = OpenWebText2DataModule(
             sequence_length=args.n_ctx,
@@ -48,7 +48,7 @@ def get_trainer(args):
             data_dir=args.data,
         )
     else:
-        print('getting file datamodule')
+        print("getting file datamodule")
 
         data_module = FileDataModule(
             sequence_length=args.n_ctx,
@@ -56,9 +56,9 @@ def get_trainer(args):
             eval_batch_size=args.eval_batch_size,
             data_dir=args.data,
         )
-    print('preparing dm')
+    print("preparing dm")
     data_module.prepare_data()
-    print('setting up dm')
+    print("setting up dm")
     data_module.setup("fit")
     ntokens = len(data_module.vocab)
     args.n_tokens = ntokens
@@ -72,7 +72,7 @@ def get_trainer(args):
     #     d_ff=args.d_ff,
     # )
     # model = GPT(configuration)
-    print('creating config')
+    print("creating config")
     configuration = GPT2Config(
         vocab_size=args.n_tokens,
         n_ctx=args.n_ctx,
@@ -93,18 +93,25 @@ def get_trainer(args):
     args.n_nonemb_param = sum(
         [p.nelement() for p in model.parameters() if p.requires_grad]
     )
-    gpt_pl = GPTLightning(model=model, args=args, tokenizer = data_module.tokenizer)
+    gpt_pl = GPTLightning(model=model, args=args, tokenizer=data_module.tokenizer)
 
     dt_string = get_pst_time()
 
     run_name = "{}_{}_{}_{}".format(args.dataset, args.model_size, args.note, dt_string)
     if args.local:
-        print('is local')
-        wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity, save_dir='/datadrive/wandb')
+        print("is local")
+        wandb_logger = WandbLogger(
+            name=run_name,
+            project="openwebtext2",
+            entity=args.entity,
+            save_dir="/datadrive/wandb",
+        )
     else:
-        wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity,)
+        wandb_logger = WandbLogger(
+            name=run_name, project="openwebtext2", entity=args.entity,
+        )
 
-    #if args.n_gpus > 1:
+    # if args.n_gpus > 1:
 
     if False:
         trainer = pl.Trainer(
@@ -129,7 +136,7 @@ def get_trainer(args):
             gradient_clip_val=args.clip,
             limit_val_batches=args.max_eval_steps,
             accumulate_grad_batches=args.accumulate_grad_batches,
-            max_steps=args.max_step*10000,
+            max_steps=args.max_step * 10000,
             enable_pl_optimizer=True,
             log_every_n_steps=args.accumulate_grad_batches,
         )
@@ -145,9 +152,11 @@ class GPTLightning(pl.LightningModule):
         self.train_seen = []
         self.val_seen = []
         self.tokenizer = tokenizer
-        intervals = [i for i in range(10**4, 100000, 15000)]
-        intervals.extend([10**3, 10**4,])
-        self.save_intervals = [x-1 for x in intervals]
+        intervals = [i for i in range(10 ** 4, 100000, 15000)]
+        intervals.extend(
+            [10 ** 3, 10 ** 4,]
+        )
+        self.save_intervals = [x - 1 for x in intervals]
 
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
@@ -173,9 +182,6 @@ class GPTLightning(pl.LightningModule):
             },
             step=self.global_step,
         )
-
-
-
 
         return {"loss": loss}
 
@@ -205,15 +211,13 @@ class GPTLightning(pl.LightningModule):
             step=self.global_step,
         )
 
-
-
         return {"val_loss": outputs[0]}
 
     def validation_epoch_end(self, validation_step_outputs):
         epoch_metric = torch.mean(
             torch.stack([x["val_loss"] for x in validation_step_outputs])
         )
-        tokens =  (self.global_step) * self.args.batch_size * self.args.n_ctx
+        tokens = (self.global_step) * self.args.batch_size * self.args.n_ctx
         self.logger.experiment.log(
             {
                 "validation_avg_loss": epoch_metric.item(),
@@ -223,16 +227,24 @@ class GPTLightning(pl.LightningModule):
             },
             step=self.global_step,
         )
-        
+
         if self.global_step in self.save_intervals:
-            file_path = '{dir}/{step:02d}step-{token}token-{val_loss:.2f}loss.pt'.format(dir=self.logger.experiment.dir, step=self.global_step, token=tokens, val_loss=epoch_metric.item())
-            torch.save({
-                'step': self.global_step,
-                'tokens': tokens,
-                'model_state_dict': self.model.state_dict(),
-                'optimizer_state_dict': self.trainer.optimizers[0].state_dict(),
-                'validation_avg_loss': epoch_metric.item(),
-            }, file_path)
+            file_path = "{dir}/{step:02d}step-{token}token-{val_loss:.2f}loss.pt".format(
+                dir=self.logger.experiment.dir,
+                step=self.global_step,
+                token=tokens,
+                val_loss=epoch_metric.item(),
+            )
+            torch.save(
+                {
+                    "step": self.global_step,
+                    "tokens": tokens,
+                    "model_state_dict": self.model.state_dict(),
+                    "optimizer_state_dict": self.trainer.optimizers[0].state_dict(),
+                    "validation_avg_loss": epoch_metric.item(),
+                },
+                file_path,
+            )
             self.logger.experiment.save(file_path)
             outputs = self.model.generate(
                 input_ids=None,
@@ -305,7 +317,15 @@ class GPTLightning(pl.LightningModule):
         # else:
         #     raise NotImplementedError
 
-        scheduler = CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=self.args.max_step, cycle_mult=1.0, max_lr=self.args.lr, min_lr=.1*self.args.lr, warmup_steps=self.args.warmup_step, gamma=1.0)
+        scheduler = CosineAnnealingWarmupRestarts(
+            optimizer,
+            first_cycle_steps=self.args.max_step,
+            cycle_mult=1.0,
+            max_lr=self.args.lr,
+            min_lr=0.1 * self.args.lr,
+            warmup_steps=self.args.warmup_step,
+            gamma=1.0,
+        )
         return (
             [optimizer],
             [
