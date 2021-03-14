@@ -186,5 +186,6 @@ if __name__ == "__main__":
     parser.add_argument("--n_gpus", default=3, type=int, help="number of gpus per node")
     parser.add_argument("--nr", default=0, type=int, help="ranking within the nodes")
     parser.add_argument("--note", default="", type=str, help="run description")
+    parser.add_argument("--token_limit", default="-1", type=int, help="for finetuning")
     args = parser.parse_args()
     main(args)
