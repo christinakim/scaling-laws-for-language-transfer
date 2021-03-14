@@ -238,7 +238,12 @@ class WebTextIter(IterableDataset):
 
 class ChineseWebtextDataset(IterableDataset):
     def __init__(
-        self, file, seq_len, batch_size, token_limit, tokenizer=None,
+        self,
+        file: str,
+        seq_len: int,
+        batch_size: int,
+        token_limit: int,
+        tokenizer=None,
     ):
         self.file = file
         self.seq_len = seq_len
