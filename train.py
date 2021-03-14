@@ -183,7 +183,7 @@ if __name__ == "__main__":
     parser.add_argument("--entity", type=str, default="openai-scholars")
     parser.add_argument("--n_val_stop", type=int, default=3)
     parser.add_argument("--n_nodes", default=1, type=int, metavar="N")
-    parser.add_argument("--n_gpus", default=1, type=int, help="number of gpus per node")
+    parser.add_argument("--n_gpus", default=3, type=int, help="number of gpus per node")
     parser.add_argument("--nr", default=0, type=int, help="ranking within the nodes")
     parser.add_argument("--note", default="", type=str, help="run description")
     args = parser.parse_args()

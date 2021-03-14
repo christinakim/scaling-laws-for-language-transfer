@@ -18,7 +18,6 @@ from transformers import GPT2LMHeadModel
 
 from datamodules import FileDataModule
 from datamodules import OpenWebText2DataModule
-from datamodules import WikiText2DataModule
 from optim_utils import GradualWarmupScheduler
 from optim_utils import CosineAnnealingWarmupRestarts
 
@@ -39,13 +38,7 @@ def add_to_pickle(item, path=PICKLE_FILE):
 
 
 def get_trainer(args):
-    if args.dataset == "wikitext2":
-        print('getting wikitext2 datamodule')
-
-        data_module = WikiText2DataModule(
-            sequence_length=args.n_ctx, batch_size=args.mini_batch_size
-        )
-    elif args.dataset == "openwebtext2":
+    if args.dataset == "openwebtext2":
         print('getting openwebtext2 datamodule')
 
         data_module = OpenWebText2DataModule(
@@ -107,7 +100,7 @@ def get_trainer(args):
     run_name = "{}_{}_{}_{}".format(args.dataset, args.model_size, args.note, dt_string)
     if args.local:
         print('is local')
-        wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity, log_model=True, save_dir='/datadrive/wandb')
+        wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity, save_dir='/datadrive/wandb')
     else:
         wandb_logger = WandbLogger(name=run_name, project="openwebtext2", entity=args.entity,)
 
@@ -152,7 +145,9 @@ class GPTLightning(pl.LightningModule):
         self.train_seen = []
         self.val_seen = []
         self.tokenizer = tokenizer
-        self.save_intervals = [x-1 for x in [10**1, 10**2, 10**3, 10**4, 10**5, 10**6]]
+        intervals = [i for i in range(10**4, 100000, 15000)]
+        intervals.extend([10**3, 10**4,])
+        self.save_intervals = [x-1 for x in intervals]
 
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
