@@ -22,8 +22,6 @@ from datamodules import OpenWebText2DataModule
 from optim_utils import GradualWarmupScheduler
 from optim_utils import CosineAnnealingWarmupRestarts
 
-PICKLE_FILE = "/datadrive/shakespeare_output.pkl"
-
 
 def get_pst_time():
     date_format = "%m_%d_%Y_%H_%M_%S_%Z"
@@ -31,11 +29,6 @@ def get_pst_time():
     date = date.astimezone(timezone("US/Pacific"))
     pstDateTime = date.strftime(date_format)
     return pstDateTime
-
-
-def add_to_pickle(item, path=PICKLE_FILE):
-    with open(path, "ab") as file:
-        pickle.dump(item, file, pickle.HIGHEST_PROTOCOL)
 
 
 def get_trainer(args):
@@ -57,6 +50,7 @@ def get_trainer(args):
             eval_batch_size=args.eval_batch_size,
             data_dir=args.data,
             token_limit=args.token_limit,
+            diff_tokenization=True if args.diff_tokenization > 0 else False,
         )
     else:
         print("getting file datamodule")
@@ -100,6 +94,17 @@ def get_trainer(args):
     )
 
     model = GPT2LMHeadModel(configuration)
+    if args.finetune > 0:
+        print('finetuning')
+        checkpoint_file = "{}/{}.ckpt".format(args.checkpoints_dir, args.model_size)
+        checkpoint = torch.load(checkpoint_file, map_location='cuda:0')
+        state_dict = checkpoint["state_dict"]
+        new_state = {}
+        for key, value in state_dict.items():
+            new_state[key[6:]] = value
+        model.load_state_dict(new_state)
+
+
     args.n_all_param = sum([p.nelement() for p in model.parameters()])
     args.n_nonemb_param = sum(
         [p.nelement() for p in model.parameters() if p.requires_grad]
@@ -165,7 +170,7 @@ class GPTLightning(pl.LightningModule):
         self.tokenizer = tokenizer
         intervals = [i for i in range(10 ** 4, 100000, 15000)]
         intervals.extend(
-            [10 ** 3, 10 ** 4,]
+            [10, 50, 10**2, 10 ** 3, 10 ** 4,]
         )
         self.save_intervals = [x - 1 for x in intervals]
 
@@ -257,16 +262,16 @@ class GPTLightning(pl.LightningModule):
                 file_path,
             )
             self.logger.experiment.save(file_path)
-            outputs = self.model.generate(
-                input_ids=None,
-                do_sample=True,
-                max_length=40,  # desired output sentence length
-                pad_token_id=self.model.config.eos_token_id,
-                bos_token_id=self.model.config.bos_token_id,
-            )
+        outputs = self.model.generate(
+            input_ids=None,
+            do_sample=True,
+            max_length=40,  # desired output sentence length
+            pad_token_id=self.model.config.eos_token_id,
+            bos_token_id=self.model.config.bos_token_id,
+        )
 
-            generated = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            self.log("generated", generated, prog_bar=True)
+        generated = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        self.log("generated", generated, prog_bar=True)
 
     def test_step(self, batch, batch_idx):
         x, y, x_len = batch

@@ -265,7 +265,8 @@ class ChineseWebtextDataset(IterableDataset):
                 tokenized.insert(0, self.tokenizer.eos_token_id)
                 for token in tokenized:
                     if len(block) == self.seq_len:
-                        yield block
+                        yield block, len(block)
+                        self.token_count += len(block)
                         block = []
                     block.append(token)
 
@@ -275,4 +276,6 @@ class ChineseWebtextDataset(IterableDataset):
             batch.append(x)
             if len(batch) == self.batch_size:
                 yield collate_fn(batch)
+                if 0 < self.token_limit <= self.token_count:
+                    return
                 batch = []

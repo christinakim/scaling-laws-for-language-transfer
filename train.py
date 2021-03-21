@@ -47,11 +47,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data",
         type=str,
-        default="/datadrive/openwebtext2",
+        default="/datadrive/webtext2019zh",
         help="location of the data corpus",
     )
     parser.add_argument(
-        "--dataset", type=str, default="openwebtext2", help="dataset name"
+        "--dataset", type=str, default="webtext2019zh", help="dataset name"
     )
     parser.add_argument(
         "--model_size",
@@ -186,6 +186,9 @@ if __name__ == "__main__":
     parser.add_argument("--n_gpus", default=3, type=int, help="number of gpus per node")
     parser.add_argument("--nr", default=0, type=int, help="ranking within the nodes")
     parser.add_argument("--note", default="", type=str, help="run description")
-    parser.add_argument("--token_limit", default="-1", type=int, help="for finetuning")
+    parser.add_argument("--token_limit", default=-1, type=int, help="for finetuning")
+    parser.add_argument("--finetune", default=-1, type=int, help="if included finetuning")
+    parser.add_argument("--diff_tokenization", default=-1, type=int, help="if included diff token")
+    parser.add_argument("--checkpoints_dir", default="/datadrive/checkpoints/", type=str, help="finetune dff token")
     args = parser.parse_args()
     main(args)

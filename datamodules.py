@@ -175,6 +175,7 @@ class ChineseWebtextDataModule(pl.LightningDataModule):
         token_limit: int,
         eval_batch_size: int = None,
         data_dir="/datadrive/",
+        diff_tokenization=False,
     ):
         super().__init__()
         self.batch_size = batch_size
@@ -182,11 +183,25 @@ class ChineseWebtextDataModule(pl.LightningDataModule):
         self.sequence_length = sequence_length
         self.data_dir = data_dir
         self.token_limit = token_limit
+        if diff_tokenization:
+            print("diff tokenizer")
+
+            self.tokenizer = PreTrainedTokenizerFast(
+                tokenizer_file=self.data_dir + "/tokenizer.json",
+                unk_token="<unk>",
+                bos_token="<bos>",
+                eos_token="<eos>",
+            )
+        else:
+            print("same tokenizer")
+            self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+
+        self.vocab = self.tokenizer.get_vocab() 
 
     def setup(self, stage: Optional[str] = None):
-        self.test_file = self.data_dir + "web_text_zh_testa.json"
-        self.train_file = self.data_dir + "web_text_zh_train.json"
-        self.valid_file = self.data_dir + "web_text_zh_valid.json"
+        self.test_file = self.data_dir + "/web_text_zh_testa.json"
+        self.train_file = self.data_dir + "/web_text_zh_train.json"
+        self.valid_file = self.data_dir + "/web_text_zh_valid.json"
 
     def train_dataloader(self):
         train_dataset = ChineseWebtextDataset(
@@ -194,6 +209,7 @@ class ChineseWebtextDataModule(pl.LightningDataModule):
             seq_len=self.sequence_length,
             batch_size=self.batch_size,
             token_limit=self.token_limit,
+            tokenizer=self.tokenizer,
         )
         data_loader = DataLoader(train_dataset, batch_size=None, sampler=None)
         return data_loader
@@ -204,6 +220,8 @@ class ChineseWebtextDataModule(pl.LightningDataModule):
             seq_len=self.sequence_length,
             batch_size=self.eval_batch_size,
             token_limit=self.token_limit,
+            tokenizer=self.tokenizer,
+
         )
 
         data_loader = DataLoader(val_dataset, batch_size=None, sampler=None,)
@@ -215,5 +233,7 @@ class ChineseWebtextDataModule(pl.LightningDataModule):
             seq_len=self.sequence_length,
             batch_size=self.eval_batch_size,
             token_limit=self.token_limit,
+            tokenizer=self.tokenizer,
+
         )
         return DataLoader(test_dataset, batch_size=None, sampler=None)
