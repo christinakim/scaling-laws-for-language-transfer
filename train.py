@@ -19,8 +19,14 @@ def main(args):
         args.n_head = config.n_head
         args.d_ff = config.d_ff
         args.d_attn = config.d_attn
+    
+    if args.model_size in ["x2small", "small"]:
+        args.mini_batch_size = 2
+    else:
+        args.mini_batch_size = 8
 
     args.accumulate_grad_batches = args.batch_size // args.mini_batch_size
+    args.dataset_size = args.limit_train_batches * args.batch_size * args.n_ctx
 
     if args.d_embd < 0:
         args.d_embd = args.d_model
@@ -190,5 +196,6 @@ if __name__ == "__main__":
     parser.add_argument("--finetune", default=-1, type=int, help="if included finetuning")
     parser.add_argument("--diff_tokenization", default=-1, type=int, help="if included diff token")
     parser.add_argument("--checkpoints_dir", default="/datadrive/checkpoints/", type=str, help="finetune dff token")
+    parser.add_argument("--limit_train_batches", type=int, help="num of batches")
     args = parser.parse_args()
     main(args)

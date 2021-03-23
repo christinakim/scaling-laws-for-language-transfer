@@ -276,6 +276,7 @@ class ChineseWebtextDataset(IterableDataset):
             batch.append(x)
             if len(batch) == self.batch_size:
                 yield collate_fn(batch)
-                if 0 < self.token_limit <= self.token_count:
-                    return
+                #if 0 < self.token_limit <= self.token_count:
+                #    print('reached token limit')
+                #    return 
                 batch = []

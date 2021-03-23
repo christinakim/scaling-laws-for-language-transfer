@@ -9,6 +9,7 @@ import torch
 import torch.optim as optim
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from pytz import timezone
 from pytz import utc
@@ -96,14 +97,15 @@ def get_trainer(args):
     model = GPT2LMHeadModel(configuration)
     if args.finetune > 0:
         print('finetuning')
-        checkpoint_file = "{}/{}.ckpt".format(args.checkpoints_dir, args.model_size)
+        #checkpoint_file = "{}/{}.ckpt".format(args.checkpoints_dir, args.model_size)
+        checkpoint_file = "{}/{}.pt".format(args.checkpoints_dir, args.model_size)
         checkpoint = torch.load(checkpoint_file, map_location='cuda:0')
-        state_dict = checkpoint["state_dict"]
-        new_state = {}
-        for key, value in state_dict.items():
-            new_state[key[6:]] = value
-        model.load_state_dict(new_state)
-
+        state_dict = checkpoint["model_state_dict"]
+        #new_state = {}
+        #for key, value in state_dict.items():
+        #    new_state[key[6:]] = value
+        #model.load_state_dict(new_state)
+        model.load_state_dict(state_dict)
 
     args.n_all_param = sum([p.nelement() for p in model.parameters()])
     args.n_nonemb_param = sum(
@@ -144,20 +146,27 @@ def get_trainer(args):
         )
     else:
         print("no ddp")
+        eval_interval = args.eval_interval * args.accumulate_grad_batches if args.eval_interval > 0 else 1.0
+        print("eval interval is {}".format(eval_interval))
         trainer = pl.Trainer(
-            val_check_interval=args.eval_interval * args.accumulate_grad_batches,
+            val_check_interval=eval_interval,
             weights_summary="full",
             gpus=[args.n_gpus],
             logger=wandb_logger,
             gradient_clip_val=args.clip,
-            limit_val_batches=args.max_eval_steps,
             accumulate_grad_batches=args.accumulate_grad_batches,
             max_steps=args.max_step * 10000,
+            max_epochs=1000,
             enable_pl_optimizer=True,
             log_every_n_steps=args.accumulate_grad_batches,
+            callbacks=[EarlyStopping(monitor='validation_avg_loss', patience=5, verbose=True)],
+            limit_train_batches=args.limit_train_batches * args.accumulate_grad_batches,
+            limit_val_batches=args.max_eval_steps,
+            #check_val_every_n_epoch=1,
         )
     trainer.fit(gpt_pl, datamodule=data_module)
-
+    trainer.test(ckpt_path=None, datamodule=data_module)
+    
 
 class GPTLightning(pl.LightningModule):
     def __init__(self, model, args, tokenizer):
@@ -193,7 +202,7 @@ class GPTLightning(pl.LightningModule):
                 "loss": float_loss,
                 "ppl": math.exp(float_loss),
                 "bpc": (float_loss / math.log(2)),
-                "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx,
+                "tokens": (self.global_step+1) * self.args.batch_size * self.args.n_ctx,
                 "lr": self.optimizers().param_groups[0]["lr"],
             },
             step=self.global_step,
@@ -202,7 +211,6 @@ class GPTLightning(pl.LightningModule):
         return {"loss": loss}
 
     def validation_step(self, batch, batch_idx):
-
         src, meta = batch
         outputs = self.model(input_ids=src, labels=src)
         loss = outputs[0].item()
@@ -222,7 +230,7 @@ class GPTLightning(pl.LightningModule):
                 "validation_loss": loss,
                 "validation_ppl": math.exp(loss),
                 "validation_bpc": (loss / math.log(2)),
-                "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx,
+                "tokens": (self.global_step+1) * self.args.batch_size * self.args.n_ctx,
             },
             step=self.global_step,
         )
@@ -239,7 +247,7 @@ class GPTLightning(pl.LightningModule):
                 "validation_avg_loss": epoch_metric.item(),
                 "validation_avg_ppl": math.exp(epoch_metric.item()),
                 "validation_avg_bpc": (epoch_metric.item() / math.log(2)),
-                "tokens": (self.global_step) * self.args.batch_size * self.args.n_ctx,
+                "tokens": (self.global_step+1) * self.args.batch_size * self.args.n_ctx,
             },
             step=self.global_step,
         )
@@ -262,32 +270,23 @@ class GPTLightning(pl.LightningModule):
                 file_path,
             )
             self.logger.experiment.save(file_path)
-        outputs = self.model.generate(
-            input_ids=None,
-            do_sample=True,
-            max_length=40,  # desired output sentence length
-            pad_token_id=self.model.config.eos_token_id,
-            bos_token_id=self.model.config.bos_token_id,
-        )
+        # outputs = self.model.generate(
+        #     input_ids=None,
+        #     do_sample=True,
+        #     max_length=40,  # desired output sentence length
+        #     pad_token_id=self.model.config.eos_token_id,
+        #     bos_token_id=self.model.config.bos_token_id,
+        # )
 
-        generated = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        self.log("generated", generated, prog_bar=True)
+        # generated = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        # self.log("generated", generated, prog_bar=True)
+        self.log("validation_avg_loss", epoch_metric.item())
 
     def test_step(self, batch, batch_idx):
-        x, y, x_len = batch
-        outputs = self.model(input_ids=x, labels=y)
+        src, meta = batch
+        outputs = self.model(input_ids=src, labels=src)
         loss = outputs[0].item()
-        # Add sync_dist=True to sync logging across all GPU workers
-        self.log_dict(
-            {
-                "test_loss": loss,
-                "test_ppl": math.exp(loss),
-                "test_bpc": (loss / math.log(2)),
-            },
-            on_step=True,
-            on_epoch=True,
-            sync_dist=True,
-        )
+
         self.logger.experiment.log(
             {
                 "test_loss": loss,
