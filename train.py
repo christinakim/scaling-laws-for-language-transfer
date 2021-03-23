@@ -19,7 +19,7 @@ def main(args):
         args.n_head = config.n_head
         args.d_ff = config.d_ff
         args.d_attn = config.d_attn
-    
+
     if args.model_size in ["x2small", "small"]:
         args.mini_batch_size = 2
     else:
@@ -193,9 +193,18 @@ if __name__ == "__main__":
     parser.add_argument("--nr", default=0, type=int, help="ranking within the nodes")
     parser.add_argument("--note", default="", type=str, help="run description")
     parser.add_argument("--token_limit", default=-1, type=int, help="for finetuning")
-    parser.add_argument("--finetune", default=-1, type=int, help="if included finetuning")
-    parser.add_argument("--diff_tokenization", default=-1, type=int, help="if included diff token")
-    parser.add_argument("--checkpoints_dir", default="/datadrive/checkpoints/", type=str, help="finetune dff token")
+    parser.add_argument(
+        "--finetune", default=-1, type=int, help="if included finetuning"
+    )
+    parser.add_argument(
+        "--diff_tokenization", default=-1, type=int, help="if included diff token"
+    )
+    parser.add_argument(
+        "--checkpoints_dir",
+        default="/datadrive/checkpoints/",
+        type=str,
+        help="finetune dff token",
+    )
     parser.add_argument("--limit_train_batches", type=int, help="num of batches")
     args = parser.parse_args()
     main(args)

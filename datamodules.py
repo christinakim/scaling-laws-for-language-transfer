@@ -1,27 +1,17 @@
 import glob
-import io
-import itertools
 import json
 import os
 import os.path
-from os import path
-import random
-from pathlib import Path
 from typing import Optional
 
-import numpy as np
 import pytorch_lightning as pl
-import torch
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset
-from torch.utils.data import IterableDataset
-
 from tokenizers import Tokenizer
 from tokenizers.models import BPE
 from tokenizers.pre_tokenizers import Whitespace
 from tokenizers.trainers import BpeTrainer
-from transformers import PreTrainedTokenizerFast
+from torch.utils.data import DataLoader
 from transformers import GPT2Tokenizer
+from transformers import PreTrainedTokenizerFast
 
 from data_utils import ChineseWebtextDataset
 from data_utils import WebTextIter
@@ -196,7 +186,7 @@ class ChineseWebtextDataModule(pl.LightningDataModule):
             print("same tokenizer")
             self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
 
-        self.vocab = self.tokenizer.get_vocab() 
+        self.vocab = self.tokenizer.get_vocab()
 
     def setup(self, stage: Optional[str] = None):
         self.test_file = self.data_dir + "/web_text_zh_testa.json"
@@ -221,7 +211,6 @@ class ChineseWebtextDataModule(pl.LightningDataModule):
             batch_size=self.eval_batch_size,
             token_limit=self.token_limit,
             tokenizer=self.tokenizer,
-
         )
 
         data_loader = DataLoader(val_dataset, batch_size=None, sampler=None,)
@@ -234,6 +223,5 @@ class ChineseWebtextDataModule(pl.LightningDataModule):
             batch_size=self.eval_batch_size,
             token_limit=self.token_limit,
             tokenizer=self.tokenizer,
-
         )
         return DataLoader(test_dataset, batch_size=None, sampler=None)

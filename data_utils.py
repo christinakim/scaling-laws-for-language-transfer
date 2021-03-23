@@ -9,7 +9,6 @@ from itertools import cycle
 import jsonlines
 import torch
 import zstandard
-from torch.utils.data import Dataset
 from torch.utils.data.dataset import IterableDataset
 from transformers import GPT2Tokenizer
 
@@ -276,7 +275,9 @@ class ChineseWebtextDataset(IterableDataset):
             batch.append(x)
             if len(batch) == self.batch_size:
                 yield collate_fn(batch)
-                #if 0 < self.token_limit <= self.token_count:
+                # if 0 < self.token_limit <= self.token_count:
                 #    print('reached token limit')
-                #    return 
+                #    return
                 batch = []
+
+
