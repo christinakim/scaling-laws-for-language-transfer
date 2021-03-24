@@ -72,7 +72,8 @@ def get_test_trainer(args):
     )
 
     model = GPT2LMHeadModel(configuration)
-    if args.model_size in ["x6small", "x5small"]:
+    #if args.model_size in ["x6small", "x5small"]:
+    if False:
         print("finetuning")
         checkpoint_file = "{}/{}.pt".format(args.checkpoints_dir, args.model_size)
         checkpoint = torch.load(checkpoint_file, map_location="cuda:0")

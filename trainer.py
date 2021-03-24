@@ -10,6 +10,7 @@ from datamodules import ChineseWebtextDataModule
 from datamodules import FileDataModule
 from datamodules import OpenWebText2DataModule
 from gpt import GPTLightning
+from pytorch_lightning.callbacks import Callback
 
 
 def get_trainer(args):
@@ -111,6 +112,8 @@ def get_trainer(args):
 
     # if args.n_gpus > 1:
 
+
+    
     if False:
         trainer = pl.Trainer(
             val_check_interval=args.eval_interval,
@@ -131,6 +134,11 @@ def get_trainer(args):
             if args.eval_interval > 0
             else 1.0
         )
+        limit_train_batches = (
+            args.limit_train_batches * args.accumulate_grad_batches 
+            if args.limit_train_batches > 0 
+            else 1.0
+        )
         print("eval interval is {}".format(eval_interval))
         trainer = pl.Trainer(
             val_check_interval=eval_interval,
@@ -144,13 +152,16 @@ def get_trainer(args):
             enable_pl_optimizer=True,
             log_every_n_steps=args.accumulate_grad_batches,
             callbacks=[
-                EarlyStopping(monitor="validation_avg_loss", patience=5, verbose=True)
+                EarlyStopping(monitor="validation_avg_loss", patience=3, verbose=True)
             ],
-            limit_train_batches=args.limit_train_batches * args.accumulate_grad_batches,
+            limit_train_batches=limit_train_batches,
             limit_val_batches=args.max_eval_steps,
             # check_val_every_n_epoch=1,
         )
     trainer.fit(gpt_pl, datamodule=data_module)
+    file_path = "{dir}/last.pt".format(dir=wandb_logger.experiment.dir,)
+    trainer.save_checkpoint(file_path)
+
     trainer.test(ckpt_path=None, datamodule=data_module)
 
 
