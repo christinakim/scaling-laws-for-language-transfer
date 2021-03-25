@@ -14,7 +14,6 @@ if [[ $1 == 'train' ]]; then
         --clip 1.0 \
         --batch_size 512 \
         --mini_batch_size 8 \
-        --eval_interval 4 \
         --warmup_step 500 \
         --max_step 250000 \
         --n_gpus $4  \
@@ -23,7 +22,8 @@ if [[ $1 == 'train' ]]; then
         --max_epoch 10000 \
         --local \
         --note $5 \
-        --limit_train_batches $6
+        --eval_interval $6 \
+        --limit_train_batches $7
 
 
 elif [[ $1 == 'eval' ]]; then

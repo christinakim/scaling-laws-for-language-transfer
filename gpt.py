@@ -158,24 +158,24 @@ class GPTLightning(pl.LightningModule):
             step=self.global_step,
         )
 
-        if self.global_step in self.save_intervals:
-            file_path = "{dir}/{step:02d}step-{token}token-{val_loss:.2f}loss.pt".format(
-                dir=self.logger.experiment.dir,
-                step=self.global_step,
-                token=tokens,
-                val_loss=epoch_metric.item(),
-            )
-            torch.save(
-                {
-                    "step": self.global_step,
-                    "tokens": tokens,
-                    "model_state_dict": self.model.state_dict(),
-                    "optimizer_state_dict": self.trainer.optimizers[0].state_dict(),
-                    "validation_avg_loss": epoch_metric.item(),
-                },
-                file_path,
-            )
-            self.logger.experiment.save(file_path)
+        # if self.global_step in self.save_intervals:
+        #     file_path = "{dir}/{step:02d}step-{token}token-{val_loss:.2f}loss.pt".format(
+        #         dir=self.logger.experiment.dir,
+        #         step=self.global_step,
+        #         token=tokens,
+        #         val_loss=epoch_metric.item(),
+        #     )
+        #     torch.save(
+        #         {
+        #             "step": self.global_step,
+        #             "tokens": tokens,
+        #             "model_state_dict": self.model.state_dict(),
+        #             "optimizer_state_dict": self.trainer.optimizers[0].state_dict(),
+        #             "validation_avg_loss": epoch_metric.item(),
+        #         },
+        #         file_path,
+        #     )
+        #     self.logger.experiment.save(file_path)
         # outputs = self.model.generate(
         #     input_ids=None,
         #     do_sample=True,
