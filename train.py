@@ -201,7 +201,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--checkpoints_dir",
-        default="/datadrive/checkpoints/",
+        default="/datadrive/checkpoints",
         type=str,
         help="finetune dff token",
     )

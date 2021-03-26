@@ -80,7 +80,7 @@ def get_trainer(args):
         print("finetuning")
         # checkpoint_file = "{}/{}.ckpt".format(args.checkpoints_dir, args.model_size)
         checkpoint_file = "{}/{}.pt".format(args.checkpoints_dir, args.model_size)
-        checkpoint = torch.load(checkpoint_file, map_location="cuda:0")
+        checkpoint = torch.load(checkpoint_file, map_location="cuda:{}".format(args.n_gpus))
         state_dict = checkpoint["model_state_dict"]
         # new_state = {}
         # for key, value in state_dict.items():
