@@ -21,7 +21,6 @@ if [[ $1 == 'train' ]]; then
         --eval_batch_size 2 \
         --max_eval_steps 2 \
         --max_epoch 10000 \
-        --local \
         --note $5 \
         --eval_interval $6 \
         --limit_train_batches $7 \
