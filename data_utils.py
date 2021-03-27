@@ -281,3 +281,49 @@ class ChineseWebtextDataset(IterableDataset):
                 batch = []
 
 
+class OscarDataset(IterableDataset):
+    def __init__(
+        self,
+        file: str,
+        seq_len: int,
+        batch_size: int,
+        token_limit: int,
+        tokenizer=None,
+    ):
+        self.file = file
+        self.seq_len = seq_len
+        self.batch_size = batch_size
+        self.token_limit = token_limit
+        self.token_count = 0
+        if tokenizer is None:
+            self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        else:
+            self.tokenizer = tokenizer
+
+
+    def get_block(self):
+        block = []
+        with open(self.file) as reader:
+            for line in reader:
+                tokenized = self.tokenizer(text=line,).input_ids
+                tokenized.append(self.tokenizer.eos_token_id)
+                tokenized.insert(0, self.tokenizer.eos_token_id)
+                for token in tokenized:
+                    if len(block) == self.seq_len:
+                        yield block, len(block)
+                        self.token_count += len(block)
+                        block = []
+                    block.append(token)
+
+    def __iter__(self):
+        batch = []
+        for x in self.get_block():
+            batch.append(x)
+            if len(batch) == self.batch_size:
+                yield collate_fn(batch)
+                # if 0 < self.token_limit <= self.token_count:
+                #    print('reached token limit')
+                #    return
+                batch = []
+
+
