@@ -23,9 +23,8 @@ if [[ $1 == 'train' ]]; then
         --local \
         --finetune 1 \
         --note $5 \
-        --eval_interval 10 \
-
-        --limit_train_batches $6
+        --eval_interval $6 \
+        --limit_train_batches $7
 
 
 elif [[ $1 == 'eval' ]]; then
