@@ -5,7 +5,7 @@ if [[ $1 == 'train' ]]; then
     python train.py \
         --cuda \
         --data  /home/christina/$2 \
-        --checkpoints_dir /home/christina/models/ \
+        --checkpoints_dir /home/christina/models \
         --dataset $2 \
         --model_size $3 \
         --n_ctx 1024 \
