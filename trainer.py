@@ -8,6 +8,7 @@ from transformers import GPT2LMHeadModel
 from utils import get_pst_time
 from datamodules import ChineseWebtextDataModule
 from datamodules import FileDataModule
+from datamodules import OscarDataModule
 from datamodules import OpenWebText2DataModule
 from gpt import GPTLightning
 from pytorch_lightning.callbacks import Callback
@@ -27,6 +28,16 @@ def get_trainer(args):
         print("getting webtext2019zh datamodule")
 
         data_module = ChineseWebtextDataModule(
+            sequence_length=args.n_ctx,
+            batch_size=args.mini_batch_size,
+            eval_batch_size=args.eval_batch_size,
+            data_dir=args.data,
+            token_limit=args.token_limit,
+            diff_tokenization=True if args.diff_tokenization > 0 else False,
+        )
+    elif "oscar" in args.dataset:
+        print("getting ocar datamoduble")
+        data_module = OscarDataModule(
             sequence_length=args.n_ctx,
             batch_size=args.mini_batch_size,
             eval_batch_size=args.eval_batch_size,

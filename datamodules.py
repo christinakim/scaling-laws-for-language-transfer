@@ -14,6 +14,7 @@ from transformers import GPT2Tokenizer
 from transformers import PreTrainedTokenizerFast
 
 from data_utils import ChineseWebtextDataset
+from data_utils import OscarDataset
 from data_utils import WebTextIter
 
 
@@ -225,3 +226,76 @@ class ChineseWebtextDataModule(pl.LightningDataModule):
             tokenizer=self.tokenizer,
         )
         return DataLoader(test_dataset, batch_size=None, sampler=None)
+
+
+
+class OscarDataModule(pl.LightningDataModule):
+    def __init__(
+        self,
+        sequence_length: int,
+        batch_size: int,
+        token_limit: int,
+        eval_batch_size: int = None,
+        data_dir="/datadrive/",
+        diff_tokenization=False,
+    ):
+        super().__init__()
+        self.batch_size = batch_size
+        self.eval_batch_size = eval_batch_size if eval_batch_size else 5
+        self.sequence_length = sequence_length
+        self.data_dir = data_dir
+        self.token_limit = token_limit
+        if diff_tokenization:
+            print("diff tokenizer")
+
+            self.tokenizer = PreTrainedTokenizerFast(
+                tokenizer_file=self.data_dir + "/tokenizer.json",
+                unk_token="<unk>",
+                bos_token="<bos>",
+                eos_token="<eos>",
+            )
+        else:
+            print("same tokenizer")
+            self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+
+        self.vocab = self.tokenizer.get_vocab()
+
+    def setup(self, stage: Optional[str] = None):
+        self.test_file = self.data_dir + "/test.txt"
+        self.train_file = self.data_dir + "/train.txt"
+        self.valid_file = self.data_dir + "/valid.txt"
+
+    def train_dataloader(self):
+        train_dataset = OscarDataset(
+            file=self.train_file,
+            seq_len=self.sequence_length,
+            batch_size=self.batch_size,
+            token_limit=self.token_limit,
+            tokenizer=self.tokenizer,
+        )
+        data_loader = DataLoader(train_dataset, batch_size=None, sampler=None)
+        return data_loader
+
+    def val_dataloader(self):
+        val_dataset = OscarDataset(
+            file=self.valid_file,
+            seq_len=self.sequence_length,
+            batch_size=self.eval_batch_size,
+            token_limit=self.token_limit,
+            tokenizer=self.tokenizer,
+        )
+
+        data_loader = DataLoader(val_dataset, batch_size=None, sampler=None,)
+        return data_loader
+
+    def test_dataloader(self):
+        test_dataset = OscarDataset(
+            file=self.test_file,
+            seq_len=self.sequence_length,
+            batch_size=self.eval_batch_size,
+            token_limit=self.token_limit,
+            tokenizer=self.tokenizer,
+        )
+        return DataLoader(test_dataset, batch_size=None, sampler=None)
+
+
