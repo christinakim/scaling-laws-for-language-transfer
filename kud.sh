@@ -22,10 +22,11 @@ if [[ $1 == 'train' ]]; then
         --max_eval_steps 2 \
         --max_epoch 10000 \
         --note $5 \
+        --local \
+        --save_dir /mnt/wandb \
         --eval_interval $6 \
         --limit_train_batches $7 \
         --finetune $8
-
 
 elif [[ $1 == 'eval' ]]; then
     echo 'Run evaluation...'

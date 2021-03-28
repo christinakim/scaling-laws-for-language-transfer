@@ -114,7 +114,7 @@ def get_trainer(args):
             name=run_name,
             project="openwebtext2",
             entity=args.entity,
-            save_dir="/datadrive/wandb",
+            save_dir=args.save_dir,
         )
     else:
         wandb_logger = WandbLogger(

@@ -206,5 +206,8 @@ if __name__ == "__main__":
         help="finetune dff token",
     )
     parser.add_argument("--limit_train_batches", type=int, help="num of batches")
+    parser.add_argument(
+        "--save_dir", default="/datadrive/wandb", type=str, help="experiment directory."
+    )
     args = parser.parse_args()
     main(args)
