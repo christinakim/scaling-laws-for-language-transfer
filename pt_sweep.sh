@@ -4,8 +4,8 @@ if [[ $1 == 'train' ]]; then
     echo 'Run pretraining sweep training...'
     python train.py \
         --cuda \
-        --data  /home/christina/$2 \
-        --checkpoints_dir /home/christina/models \
+        --data  /mnt/$2 \
+        --checkpoints_dir /mnt/models \
         --dataset $2 \
         --model_size x6small \
         --n_ctx 1024 \
@@ -22,7 +22,9 @@ if [[ $1 == 'train' ]]; then
         --max_eval_steps 2 \
         --max_epoch 10000 \
         --eval_interval 48 \
+        --local \
         --limit_train_batches 96 \
+        --save_dir /mnt/wandb \
         --finetune -1
     
     python train.py \
@@ -45,6 +47,8 @@ if [[ $1 == 'train' ]]; then
         --max_eval_steps 2 \
         --max_epoch 10000 \
         --eval_interval 24 \
+        --local \
+        --save_dir /mnt/wandb \
         --limit_train_batches 48 \
         --finetune -1
     
@@ -69,6 +73,8 @@ if [[ $1 == 'train' ]]; then
         --max_epoch 10000 \
         --eval_interval 20 \
         --limit_train_batches 20 \
+        --local \
+        --save_dir /mnt/wandb \
         --finetune -1
     
     python train.py \
@@ -92,6 +98,8 @@ if [[ $1 == 'train' ]]; then
         --max_epoch 10000 \
         --eval_interval 96 \
         --limit_train_batches 192 \
+        --local \
+        --save_dir /mnt/wandb \
         --finetune -1
     
 
