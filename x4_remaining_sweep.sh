@@ -152,4 +152,4 @@ if [[ $1 == 'train' ]]; then
         --local \
         --save_dir /mnt/wandb \
         --finetune 1
-    
+fi
