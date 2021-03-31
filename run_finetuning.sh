@@ -14,8 +14,8 @@ if [[ $1 == 'train' ]]; then
         --clip 1.0 \
         --batch_size 512 \
         --mini_batch_size 8 \
-        --warmup_step 500 \
-        --max_step 250000 \
+        --warmup_step 50 \
+        --max_step 2000 \
         --n_gpus $4  \
         --eval_batch_size 2 \
         --max_eval_steps 2 \
