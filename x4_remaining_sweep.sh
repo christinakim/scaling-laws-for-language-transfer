@@ -22,11 +22,11 @@ if [[ $1 == 'train' ]]; then
         --eval_batch_size 2 \
         --max_eval_steps 2 \
         --max_epoch 10000 \
-        --eval_interval 96 \
+        --eval_interval 240 \
         --local \
         --save_dir /mnt/wandb \
-        --limit_train_batches 192 \
-        --finetune -1
+        --limit_train_batches 480 \
+        --finetune 1
     
     python train.py \
         --cuda \

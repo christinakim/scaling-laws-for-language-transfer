@@ -305,6 +305,7 @@ class OscarDataset(IterableDataset):
         block = []
         with open(self.file) as reader:
             for line in reader:
+                line = line.decode("UTF-8")
                 tokenized = self.tokenizer(text=line,).input_ids
                 tokenized.append(self.tokenizer.eos_token_id)
                 tokenized.insert(0, self.tokenizer.eos_token_id)
