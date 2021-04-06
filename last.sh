@@ -3,7 +3,7 @@ python train.py \
     --data  /$1/$2 \
     --checkpoints_dir /$1/models \
     --dataset $2 \
-    --model_size "$model" \
+    --model_size $3 \
     --n_ctx 1024 \
     --dropout 0.0 \
     --dropatt 0.0 \
@@ -13,12 +13,12 @@ python train.py \
     --mini_batch_size 8 \
     --warmup_step 500 \
     --max_step 250000 \
-    --n_gpus $3  \
+    --n_gpus $4  \
     --eval_batch_size 2 \
     --max_eval_steps 2 \
     --max_epoch 10000 \
     --local \
     --save_dir /$1/wandb \
-    --eval_interval $4 \
-    --limit_train_batches $4 \
-    --finetune -1
+    --eval_interval $5 \
+    --limit_train_batches $5 \
+    --finetune $6
