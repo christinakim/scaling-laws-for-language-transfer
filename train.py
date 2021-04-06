@@ -25,13 +25,13 @@ def main(args):
     else:
         args.mini_batch_size = 8
 
-    #args.accumulate_grad_batches = args.batch_size // args.mini_batch_size
+    args.accumulate_grad_batches = args.batch_size // args.mini_batch_size if args.batch_size >= args.mini_batch_size else 1
     args.dataset_size = args.limit_train_batches * args.batch_size * args.n_ctx
 
     if args.d_embd < 0:
         args.d_embd = args.d_model
 
-    assert args.batch_size % args.mini_batch_size == 0
+    #assert args.batch_size % args.mini_batch_size == 0
 
     print(args)
     # Set the random seed manually for reproducibility.

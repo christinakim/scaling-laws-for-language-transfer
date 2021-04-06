@@ -19,11 +19,10 @@ python train.py \
     --eval_batch_size 2 \
     --max_eval_steps 2 \
     --max_epoch 10000 \
-    --note $5 \
     --local \
-    --save_dir /mnt/wandb \
-    --eval_interval $6 \
-    --limit_train_batches $6 \
+    --save_dir /$1/wandb \
+    --eval_interval $5 \
+    --limit_train_batches $5 \
     --finetune -1
 
 python train.py \
@@ -45,9 +44,8 @@ python train.py \
     --eval_batch_size 2 \
     --max_eval_steps 2 \
     --max_epoch 10000 \
-    --note $5 \
     --local \
-    --save_dir /mnt/wandb \
-    --eval_interval $6 \
-    --limit_train_batches $6 \
+    --save_dir /$1/wandb \
+    --eval_interval $5 \
+    --limit_train_batches $5 \
     --finetune 1
