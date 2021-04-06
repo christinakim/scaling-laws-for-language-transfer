@@ -25,7 +25,7 @@ def main(args):
     else:
         args.mini_batch_size = 8
 
-    args.accumulate_grad_batches = args.batch_size // args.mini_batch_size
+    #args.accumulate_grad_batches = args.batch_size // args.mini_batch_size
     args.dataset_size = args.limit_train_batches * args.batch_size * args.n_ctx
 
     if args.d_embd < 0:
