@@ -1,6 +1,5 @@
-from torch.optim.lr_scheduler import _LRScheduler
-
 import math
+
 import torch
 from torch.optim.lr_scheduler import _LRScheduler
 
@@ -138,19 +137,10 @@ class CosineAnnealingWarmupRestarts(_LRScheduler):
         else:
             if epoch >= self.first_cycle_steps:
                 self.step_in_cycle = -1
-                # if self.cycle_mult == 1.:
-                #     self.step_in_cycle = epoch % self.first_cycle_steps
-                #     self.cycle = epoch // self.first_cycle_steps
-                # else:
-                #     n = int(math.log((epoch / self.first_cycle_steps * (self.cycle_mult - 1) + 1), self.cycle_mult))
-                #     self.cycle = n
-                #     self.step_in_cycle = epoch - int(self.first_cycle_steps * (self.cycle_mult ** n - 1) / (self.cycle_mult - 1))
-                #     self.cur_cycle_steps = self.first_cycle_steps * self.cycle_mult ** (n)
             else:
                 self.cur_cycle_steps = self.first_cycle_steps
                 self.step_in_cycle = epoch
 
-        # self.max_lr = self.base_max_lr * (self.gamma**self.cycle)
         self.last_epoch = math.floor(epoch)
         for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
             param_group["lr"] = lr

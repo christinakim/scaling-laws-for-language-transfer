@@ -14,6 +14,9 @@ from transformers import GPT2Tokenizer
 
 
 # from openwebtext2 https://github.com/EleutherAI/openwebtext2/blob/master/utils/archiver.py
+from transformers import PreTrainedTokenizer
+
+
 def json_serial(obj):
     """JSON serializer for objects not serializable by default json code"""
 
@@ -78,13 +81,11 @@ class Reader:
 
 def collate_fn(batch):
     data_list, label_list, seq_len_list = [], [], []
-    # for _data, _label, _seq in batch:
     for _data, _seq in batch:
         data_list.append(_data)
         seq_len_list.append(_seq)
     return (
         torch.LongTensor(data_list),
-        # torch.LongTensor(label_list),
         seq_len_list,
     )
 
@@ -106,19 +107,19 @@ class WebTextDocumentIterator:
 
 
 class FileIterator:
-    def __init__(self, dataset_path):
+    def __init__(self, dataset_path: str):
         self.dataset_path = dataset_path
 
     def __iter__(self):
-        line_chunk_size = 20000
-        lines = []
         with open(self.dataset_path, "r", encoding="utf-8") as f:
             text = f.read()
             yield text
 
 
 class TokenizerIterator:
-    def __init__(self, seq_len, tokenizer, seed, dataset_path):
+    def __init__(
+        self, seq_len: int, tokenizer: PreTrainedTokenizer, seed: int, dataset_path: str
+    ):
         self.seq_len = seq_len
         self.tokenizer = tokenizer
         self.document_iter = WebTextDocumentIterator(dataset_path)
@@ -127,41 +128,29 @@ class TokenizerIterator:
 
     def __iter__(self):
         block = []
-        if self.document_iter:
-            for documents in self.document_iter:
-                random.Random(self.seed).shuffle(documents)
-                docs = []
-                for doc_i, x in enumerate(documents):
-                    tokenized = self.tokenizer(text=x[1],).input_ids
-                    tokenized.append(self.tokenizer.eos_token_id)
+        for documents in self.document_iter:
+            random.Random(self.seed).shuffle(documents)
+            for doc_i, x in enumerate(documents):
+                tokenized = self.tokenizer(text=x[1],).input_ids
+                tokenized.append(self.tokenizer.eos_token_id)
 
-                    tokenized.insert(0, self.tokenizer.eos_token_id)
-                    tokenized_length = len(tokenized)
-                    for token in tokenized:
-                        if len(block) == self.seq_len:
-                            yield block, (x[0], doc_i)
-                            block = []
-                        block.append(token)
-        else:
-            for file in self.file_iter:
-                tokenized = self.tokenizer(text=file,).input_ids
-
-                tokenized_length = len(tokenized)
-                idxs = [i for i in range(tokenized_length - self.seq_len)]
-                while len(idxs) > 1:
-                    starting_idx = idxs.pop(random.randrange(len(idxs)))
-                    block = tokenized[starting_idx : starting_idx + self.seq_len]
-                    yield block, (starting_idx)
-
-                # if len(tokenized) >= self.seq_len:
-                #     i = 0
-                #     while i <= len(tokenized) - self.seq_len:
-                #         yield tokenized[i : i + self.seq_len]
-                #         i += self.seq_len
+                tokenized.insert(0, self.tokenizer.eos_token_id)
+                for token in tokenized:
+                    if len(block) == self.seq_len:
+                        yield block, (x[0], doc_i)
+                        block = []
+                    block.append(token)
 
 
 class BatchIterator:
-    def __init__(self, seq_len, batch_size, drop_last, tokenizer, dataset_paths):
+    def __init__(
+        self,
+        seq_len: int,
+        batch_size: int,
+        drop_last: bool,
+        tokenizer: PreTrainedTokenizer,
+        dataset_paths: str,
+    ):
 
         self.dataset_paths = dataset_paths
         self.batch_size = batch_size
@@ -176,14 +165,8 @@ class BatchIterator:
         )
         for x in self.tokenizer_iter:
             yield x
-            # batch.append(x)
-            # if len(batch) == self.batch_size:
-            #     yield batch
-            #     batch = []
 
     def shuffled_data_list(self, i):
-        # split = len(self.dataset_paths) // self.batch_size
-        # dataset_paths = self.dataset_paths[(i*split):((i+1)*split)]
         shuffled = self.dataset_paths
         # does not impact global seed
         random.Random(i).shuffle(shuffled)
@@ -275,9 +258,6 @@ class ChineseWebtextDataset(IterableDataset):
             batch.append(x)
             if len(batch) == self.batch_size:
                 yield collate_fn(batch)
-                # if 0 < self.token_limit <= self.token_count:
-                #    print('reached token limit')
-                #    return
                 batch = []
 
 
@@ -300,10 +280,9 @@ class OscarDataset(IterableDataset):
         else:
             self.tokenizer = tokenizer
 
-
     def get_block(self):
         block = []
-        with open(self.file, 'rb') as reader:
+        with open(self.file, "rb") as reader:
             for line in reader:
                 line = str(line)
                 tokenized = self.tokenizer(text=line,).input_ids
@@ -322,9 +301,4 @@ class OscarDataset(IterableDataset):
             batch.append(x)
             if len(batch) == self.batch_size:
                 yield collate_fn(batch)
-                # if 0 < self.token_limit <= self.token_count:
-                #    print('reached token limit')
-                #    return
                 batch = []
-
-

@@ -91,7 +91,9 @@ def get_trainer(args):
         print("finetuning")
         # checkpoint_file = "{}/{}.ckpt".format(args.checkpoints_dir, args.model_size)
         checkpoint_file = "{}/{}.pt".format(args.checkpoints_dir, args.model_size)
-        checkpoint = torch.load(checkpoint_file, map_location="cuda:{}".format(args.n_gpus))
+        checkpoint = torch.load(
+            checkpoint_file, map_location="cuda:{}".format(args.n_gpus)
+        )
         state_dict = checkpoint["model_state_dict"]
         # new_state = {}
         # for key, value in state_dict.items():
@@ -123,8 +125,6 @@ def get_trainer(args):
 
     # if args.n_gpus > 1:
 
-
-    
     if False:
         trainer = pl.Trainer(
             val_check_interval=args.eval_interval,
@@ -146,8 +146,8 @@ def get_trainer(args):
             else 1.0
         )
         limit_train_batches = (
-            args.limit_train_batches * args.accumulate_grad_batches 
-            if args.limit_train_batches > 0 
+            args.limit_train_batches * args.accumulate_grad_batches
+            if args.limit_train_batches > 0
             else 1.0
         )
         print("eval interval is {}".format(eval_interval))
@@ -174,5 +174,3 @@ def get_trainer(args):
     trainer.save_checkpoint(file_path)
 
     trainer.test(ckpt_path=None, datamodule=data_module)
-
-

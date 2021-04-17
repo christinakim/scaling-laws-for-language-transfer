@@ -8,9 +8,9 @@ from optim_utils import CosineAnnealingWarmupRestarts
 
 
 class ModelSettings:
-    embd_pdrop = 0.1
-    resid_pdrop = 0.1
-    attn_pdrop = 0.1
+    embd_pdrop = 0.0
+    resid_pdrop = 0.0
+    attn_pdrop = 0.0
 
     def __init__(
         self, size: str, n_layer: int, d_model: int, learning_rate: float,
@@ -24,6 +24,7 @@ class ModelSettings:
         self.d_attn = 1 * d_model
 
 
+# hparams from Scaling Laws for Neural Languages
 common_models_by_name = {
     "x10small": ModelSettings(
         size="x10small", n_layer=1, d_model=8, learning_rate=0.00211,
@@ -74,8 +75,6 @@ class GPTLightning(pl.LightningModule):
         self.args = args
         self.model = model
         self.save_hyperparameters(args)
-        self.train_seen = []
-        self.val_seen = []
         self.tokenizer = tokenizer
         intervals = [i for i in range(10 ** 4, 100000, 15000)]
         intervals.extend(
@@ -84,15 +83,13 @@ class GPTLightning(pl.LightningModule):
         self.save_intervals = [x - 1 for x in intervals]
 
     def forward(self, x):
-        # in lightning, forward defines the prediction/inference actions
         logits = self.model(x)
         return logits
 
     def training_step(self, batch, batch_idx):
-        # training_step defined the train loop. It is independent of forward
-
         src, _ = batch
 
+        # for huggingface models you put in the src as labels and the model shifts it over
         outputs = self.model(input_ids=src, labels=src)
         loss = outputs[0]
 
@@ -117,16 +114,6 @@ class GPTLightning(pl.LightningModule):
         outputs = self.model(input_ids=src, labels=src)
         loss = outputs[0].item()
 
-        # Add sync_dist=True to sync logging across all GPU workers
-        # self.logger.log_metrics(
-        #     {
-        #         "validation_loss": loss,
-        #         "validation_ppl": math.exp(loss),
-        #         "validation_bpc": (loss / math.log(2)),
-        #     },
-        #     sync_dist=True,
-
-        # )
         self.logger.experiment.log(
             {
                 "validation_loss": loss,
@@ -158,34 +145,34 @@ class GPTLightning(pl.LightningModule):
             step=self.global_step,
         )
 
-        # if self.global_step in self.save_intervals:
-        #     file_path = "{dir}/{step:02d}step-{token}token-{val_loss:.2f}loss.pt".format(
-        #         dir=self.logger.experiment.dir,
-        #         step=self.global_step,
-        #         token=tokens,
-        #         val_loss=epoch_metric.item(),
-        #     )
-        #     torch.save(
-        #         {
-        #             "step": self.global_step,
-        #             "tokens": tokens,
-        #             "model_state_dict": self.model.state_dict(),
-        #             "optimizer_state_dict": self.trainer.optimizers[0].state_dict(),
-        #             "validation_avg_loss": epoch_metric.item(),
-        #         },
-        #         file_path,
-        #     )
-        #     self.logger.experiment.save(file_path)
-        # outputs = self.model.generate(
-        #     input_ids=None,
-        #     do_sample=True,
-        #     max_length=40,  # desired output sentence length
-        #     pad_token_id=self.model.config.eos_token_id,
-        #     bos_token_id=self.model.config.bos_token_id,
-        # )
+        if self.global_step in self.save_intervals:
+            file_path = "{dir}/{step:02d}step-{token}token-{val_loss:.2f}loss.pt".format(
+                dir=self.logger.experiment.dir,
+                step=self.global_step,
+                token=tokens,
+                val_loss=epoch_metric.item(),
+            )
+            torch.save(
+                {
+                    "step": self.global_step,
+                    "tokens": tokens,
+                    "model_state_dict": self.model.state_dict(),
+                    "optimizer_state_dict": self.trainer.optimizers[0].state_dict(),
+                    "validation_avg_loss": epoch_metric.item(),
+                },
+                file_path,
+            )
+            self.logger.experiment.save(file_path)
+        outputs = self.model.generate(
+            input_ids=None,
+            do_sample=True,
+            max_length=40,  # desired output sentence length
+            pad_token_id=self.model.config.eos_token_id,
+            bos_token_id=self.model.config.bos_token_id,
+        )
 
-        # generated = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        # self.log("generated", generated, prog_bar=True)
+        generated = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        self.log("generated", generated, prog_bar=True)
         self.log("validation_avg_loss", epoch_metric.item())
 
     def test_step(self, batch, batch_idx):
@@ -208,35 +195,6 @@ class GPTLightning(pl.LightningModule):
             optimizer = optim.Adam(self.parameters(), lr=self.args.lr)
         else:
             raise NotImplementedError
-
-        # #### scheduler
-        # if self.args.scheduler == "cosine":
-        #     cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        #         optimizer,
-        #         self.args.max_steps,
-        #         eta_min=.1*self.args.lr,
-        #     )
-        #     scheduler = GradualWarmupScheduler(
-        #         optimizer, self.args.warmup_step, after_scheduler=cosine_scheduler
-        #     )
-
-        # elif self.args.scheduler == "inv_sqrt":
-        #     # originally used for Transformer (in Attention is all you need)
-        #     def lr_lambda(step):
-        #         # return a multiplier instead of a learning rate
-        #         if step == 0 and self.args.warmup_step == 0:
-        #             return 1.0
-        #         else:
-        #             return (
-        #                 1.0 / (step ** 0.5)
-        #                 if step > self.args.warmup_step
-        #                 else step / (self.args.warmup_step ** 1.5)
-        #             )
-
-        #     scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
-
-        # else:
-        #     raise NotImplementedError
 
         scheduler = CosineAnnealingWarmupRestarts(
             optimizer,

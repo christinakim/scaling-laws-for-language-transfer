@@ -49,8 +49,6 @@ class OpenWebText2DataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None):
         files = glob.glob(os.path.join(self.data_dir + "/shards", "*"))
-        # files = glob.glob(os.path.join(self.data_dir, "*.jsonl.zst"))
-        print(files)
         self.train_paths = files[:80]
         self.val_paths = files[80:90]
         self.test_paths = files[90:]
@@ -58,17 +56,6 @@ class OpenWebText2DataModule(pl.LightningDataModule):
         vocab = build_vocab_from_json(self.data_dir + "/gpt2-vocab.json")
         self.vocab = vocab
         self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-        # self.train_paths = [
-        #     path
-        #     for idx, path in enumerate(all_paths)
-        #     if idx % 10 in (0, 2, 4, 6, 8,)
-        # ]
-        # self.valid_paths = [
-        #     path for idx, path in enumerate(all_paths) if idx % 10 in (1, 9)
-        # ]
-        # self.test_paths = [
-        #     path for idx, path in enumerate(all_paths) if idx % 10 in (3, 7)
-        # ]
 
     def train_dataloader(self):
         train_dataset = WebTextIter(
@@ -228,7 +215,6 @@ class ChineseWebtextDataModule(pl.LightningDataModule):
         return DataLoader(test_dataset, batch_size=None, sampler=None)
 
 
-
 class OscarDataModule(pl.LightningDataModule):
     def __init__(
         self,
@@ -297,5 +283,3 @@ class OscarDataModule(pl.LightningDataModule):
             tokenizer=self.tokenizer,
         )
         return DataLoader(test_dataset, batch_size=None, sampler=None)
-
-
