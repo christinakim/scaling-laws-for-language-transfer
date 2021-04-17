@@ -17,7 +17,7 @@ All English pre-trained models were trained for 26 billion tokens with no repeat
 - [x2small](https://huggingface.co/christina/decoder-only-transformer-x2small) 70M non-embedding parameters
 - [small](https://huggingface.co/christina/decoder-only-transformer-small) 124M non-embedding parameters
 
-#### Datasets
+### Datasets
 - English: [OpenWebtext2](https://openwebtext2.readthedocs.io/en/latest/)
 - German: [Oscar](https://oscar-corpus.com/)
 - Spanish: [Oscar](https://oscar-corpus.com/)
