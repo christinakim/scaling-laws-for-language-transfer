@@ -6,7 +6,7 @@ Building upon work from [Scaling Laws for Transfer](https://arxiv.org/abs/2102.0
 
 ## Usage
 This repo contains the code for: 
-1) Reproducing pre-trained decoder-only transformers using hyperparameters from [Scaling Laws for Neural Languages](https://arxiv.org/abs/2001.08361) but trained on [OpenWebtext2](https://openwebtext2.readthedocs.io/en/latest/) instead of WebText 
+1) Reproducing pre-trained decoder-only transformers using hyperparameters from [Scaling Laws for Neural Languages](https://arxiv.org/abs/2001.08361) but trained on OpenWebtext2 instead of WebText 
 2) Reproducing language transfer experiments for pre-trained English models to Chinese, Spanish, and German texts 
 
 All English pre-trained models were trained for 26 billion tokens with no repeats: 
@@ -18,7 +18,7 @@ All English pre-trained models were trained for 26 billion tokens with no repeat
 - [small](https://huggingface.co/christina/decoder-only-transformer-small) 124M non-embedding parameters
 
 #### Datasets
-- English: OpenWebtext2
-- German: Oscar
-- Spanish: Oscar
+- English: [OpenWebtext2](https://openwebtext2.readthedocs.io/en/latest/)
+- German: [Oscar](https://oscar-corpus.com/)
+- Spanish: [Oscar](https://oscar-corpus.com/)
 - Chinese: Community QA (webtext2091zh)
