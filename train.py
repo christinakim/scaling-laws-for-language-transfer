@@ -1,4 +1,3 @@
-# coding: utf-8
 import argparse
 
 import numpy as np
@@ -20,6 +19,7 @@ def main(args):
         args.d_ff = config.d_ff
         args.d_attn = config.d_attn
 
+    # this was needed to fit onto gpu memory
     if args.model_size in ["x2small", "small"]:
         args.mini_batch_size = 2
     else:
@@ -37,7 +37,6 @@ def main(args):
 
     # assert args.batch_size % args.mini_batch_size == 0
 
-    print(args)
     # Set the random seed manually for reproducibility.
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -50,7 +49,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="PyTorch GPT Model")
+    parser = argparse.ArgumentParser(description="Scaling Laws for Language Transfer")
     parser.add_argument(
         "--data",
         type=str,
@@ -195,10 +194,10 @@ if __name__ == "__main__":
     parser.add_argument("--note", default="", type=str, help="run description")
     parser.add_argument("--token_limit", default=-1, type=int, help="for finetuning")
     parser.add_argument(
-        "--finetune", default=-1, type=int, help="if included finetuning"
+        "--finetune", default=-1, type=int, help="if 1 > finetuning"
     )
     parser.add_argument(
-        "--diff_tokenization", default=-1, type=int, help="if included diff token"
+        "--diff_tokenization", default=-1, type=int, help="if included use diff tokenization"
     )
     parser.add_argument(
         "--checkpoints_dir",

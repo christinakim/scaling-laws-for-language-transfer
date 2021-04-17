@@ -5,13 +5,12 @@ from pytorch_lightning.loggers import WandbLogger
 from transformers import GPT2Config
 from transformers import GPT2LMHeadModel
 
-from utils import get_pst_time
 from datamodules import ChineseWebtextDataModule
 from datamodules import FileDataModule
-from datamodules import OscarDataModule
 from datamodules import OpenWebText2DataModule
+from datamodules import OscarDataModule
 from gpt import GPTLightning
-from pytorch_lightning.callbacks import Callback
+from utils import get_pst_time
 
 
 def get_trainer(args):
@@ -36,7 +35,7 @@ def get_trainer(args):
             diff_tokenization=True if args.diff_tokenization > 0 else False,
         )
     elif "oscar" in args.dataset:
-        print("getting ocar datamoduble")
+        print("getting Oscar datamoduble")
         data_module = OscarDataModule(
             sequence_length=args.n_ctx,
             batch_size=args.mini_batch_size,
@@ -61,15 +60,6 @@ def get_trainer(args):
     ntokens = len(data_module.vocab)
     args.n_tokens = ntokens
 
-    # configuration = GPTConfig(
-    #     vocab_size=args.n_tokens,
-    #     context_length=args.n_ctx,
-    #     n_embd=args.d_embd,
-    #     n_layer=args.n_layer,
-    #     n_head=args.n_head,
-    #     d_ff=args.d_ff,
-    # )
-    # model = GPT(configuration)
     print("creating config")
     configuration = GPT2Config(
         vocab_size=args.n_tokens,
@@ -89,16 +79,12 @@ def get_trainer(args):
     model = GPT2LMHeadModel(configuration)
     if args.finetune > 0:
         print("finetuning")
-        # checkpoint_file = "{}/{}.ckpt".format(args.checkpoints_dir, args.model_size)
         checkpoint_file = "{}/{}.pt".format(args.checkpoints_dir, args.model_size)
         checkpoint = torch.load(
             checkpoint_file, map_location="cuda:{}".format(args.n_gpus)
         )
         state_dict = checkpoint["model_state_dict"]
-        # new_state = {}
-        # for key, value in state_dict.items():
-        #    new_state[key[6:]] = value
-        # model.load_state_dict(new_state)
+
         model.load_state_dict(state_dict)
 
     args.n_all_param = sum([p.nelement() for p in model.parameters()])
@@ -110,22 +96,26 @@ def get_trainer(args):
     dt_string = get_pst_time()
 
     run_name = "{}_{}_{}_{}".format(args.dataset, args.model_size, args.note, dt_string)
-    if args.local:
-        print("is local")
-        wandb_logger = WandbLogger(
-            name=run_name,
-            project="openwebtext2",
-            entity=args.entity,
-            save_dir=args.save_dir,
-        )
-    else:
-        wandb_logger = WandbLogger(
-            name=run_name, project="openwebtext2", entity=args.entity,
-        )
 
-    # if args.n_gpus > 1:
+    wandb_logger = WandbLogger(
+        name=run_name,
+        project="openwebtext2",
+        entity=args.entity,
+        save_dir=args.save_dir,
+    )
 
-    if False:
+    eval_interval = (
+        args.eval_interval * args.accumulate_grad_batches
+        if args.eval_interval > 0
+        else 1.0
+    )
+    limit_train_batches = (
+        args.limit_train_batches * args.accumulate_grad_batches
+        if args.limit_train_batches > 0
+        else 1.0
+    )
+    print("eval interval is {}".format(eval_interval))
+    if args.n_gpus > 1:
         trainer = pl.Trainer(
             val_check_interval=args.eval_interval,
             weights_summary="full",
@@ -140,17 +130,6 @@ def get_trainer(args):
         )
     else:
         print("no ddp")
-        eval_interval = (
-            args.eval_interval * args.accumulate_grad_batches
-            if args.eval_interval > 0
-            else 1.0
-        )
-        limit_train_batches = (
-            args.limit_train_batches * args.accumulate_grad_batches
-            if args.limit_train_batches > 0
-            else 1.0
-        )
-        print("eval interval is {}".format(eval_interval))
         trainer = pl.Trainer(
             val_check_interval=eval_interval,
             weights_summary="full",
@@ -173,4 +152,5 @@ def get_trainer(args):
     file_path = "{dir}/last.pt".format(dir=wandb_logger.experiment.dir,)
     trainer.save_checkpoint(file_path)
 
+    #use latest model and run on test set
     trainer.test(ckpt_path=None, datamodule=data_module)
