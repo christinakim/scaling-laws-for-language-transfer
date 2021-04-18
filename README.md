@@ -2,7 +2,7 @@
 Code and models from the blog post [Scaling Laws for Language Transfer Learning](https://christina.kim/2021/04/11/scaling-laws-for-language-transfer-learning/)
 
 ## Motivation
-Building upon work from [Scaling Laws for Transfer](https://arxiv.org/abs/2102.01293) (Hernandez et. al. 2021), my experiments focused on exploring the relationships between fine-tuning on non-English languages and try to answer the question: How much does pre-training on English help when transferring across different languages as we vary the dataset size and model size?
+Building upon work from [Scaling Laws for Transfer](https://arxiv.org/abs/2102.01293) (Hernandez et. al. 2021), my experiments focused on exploring the relationships between fine-tuning on non-English languages and trying to answer the question: How much does pre-training on English help when transferring across different languages as we vary the dataset size and model size?
 
 ## Usage
 This repo contains the code for: 
